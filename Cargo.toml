@@ -1,0 +1,15 @@
+[package]
+name = "tetrox"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rand = "0.8.4"
+num-traits = "0.2"
+num-derive = "0.2"
+
+[[bin]]
+name = "client"
+
+[[bin]]
+name = "server"
