@@ -4,7 +4,7 @@ use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
 use rand::Rng;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct Coords(i32, i32);
 
 impl ops::Add for Coords {
@@ -264,8 +264,10 @@ impl<P: PieceKind> LivePiece<P> {
     fn rotated_180(&self) -> LivePiece<P> { self.rotated_cw().rotated_cw() }
 
     fn is_blocked(&self, field: &DefaultField<P>) -> bool {
-        // TODO: check bounds
-        self.coords.iter().any(|c| !field.get_at(c).is_empty())
+        self.coords
+            .iter()
+            // make sure the coords are in bounds and are not filled by other pieces
+            .any(|c| !field.coords_in_bounds(&c) || !field.get_at(c).is_empty() && !self.coords.contains(c))
     }
 }
 
@@ -304,6 +306,10 @@ impl<P: PieceKind> DefaultField<P> {
     pub fn width(&self) -> usize { self.width }
 
     pub fn height(&self) -> usize { self.height }
+
+    pub fn coords_in_bounds(&self, Coords(row, col): &Coords) -> bool {
+        (0..self.height as i32).contains(row) && (0..self.width as i32).contains(col)
+    }
 
     pub fn hidden(&self) -> usize { self.hidden }
 
@@ -345,6 +351,7 @@ impl<P: PieceKind> DefaultField<P> {
         self.try_update_cur_piece(LivePiece::new(kind, &self.piece_origin))
     }
 
+    // changes and redraws the current piece if the new piece isn't blocked
     fn try_update_cur_piece(&mut self, new_piece: LivePiece<P>) -> bool {
         let blocked = new_piece.is_blocked(&self);
         if !blocked {

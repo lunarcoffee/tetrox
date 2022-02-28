@@ -5,7 +5,7 @@ fn main() {
     let mut playfield = DefaultField::<Tetromino>::new(10, 40, 20, &mut bag);
     playfield.try_spawn(&mut bag);
 
-    playfield.try_shift(0, 3);
+    playfield.try_shift(0, 5);
 
     for line in playfield.lines() {
         let squares = line.squares();
