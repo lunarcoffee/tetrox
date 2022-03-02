@@ -5,3 +5,6 @@ edition = "2021"
 
 [dependencies]
 tetrox = { path = "../" }
+
+yew = "0.19.3"
+getrandom = { version = "0.2.5", features = ["js"] }
