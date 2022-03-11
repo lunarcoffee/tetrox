@@ -1,0 +1,18 @@
+.field {
+    display: inline-flex;
+    flex-direction: column;
+}
+
+.field-line {
+    display: inline-flex;
+    flex-direction: row;
+}
+
+.field-square {
+    width: 18px;
+    height: 18px;
+}
+
+.field-square-empty {
+    background: black;
+}

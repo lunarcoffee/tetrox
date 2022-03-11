@@ -2,11 +2,11 @@ use std::ops;
 
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
-use rand::Rng;
+use rand::prelude::SliceRandom;
 
 use crate::{Bag, Coords, KickTable, KickTable180, PieceKind, RotationState};
 
-#[derive(Copy, Clone, FromPrimitive)]
+#[derive(Copy, Clone, Debug, FromPrimitive)]
 pub enum Tetromino {
     S,
     Z,
@@ -32,6 +32,20 @@ impl PieceKind for Tetromino {
         .map(|(row, col)| Coords(row, col))
         .collect()
     }
+
+    fn pivot_offset(&self, rotation_state: RotationState) -> (usize, Coords) { todo!() }
+
+    fn asset_name(&self) -> &str {
+        match self {
+            Tetromino::S => "s",
+            Tetromino::Z => "z",
+            Tetromino::L => "l",
+            Tetromino::J => "j",
+            Tetromino::I => "i",
+            Tetromino::O => "o",
+            Tetromino::T => "t",
+        }
+    }
 }
 
 pub struct SevenBag {
@@ -52,11 +66,9 @@ impl SevenBag {
     fn update_bags(&mut self) {
         if self.cur_bag.is_empty() {
             self.cur_bag.extend(&self.next_bag);
-
-            let mut rng = rand::thread_rng();
-            self.next_bag = (0..7)
-                .map(|_| Tetromino::from_i32(rng.gen_range(0..7)).unwrap())
-                .collect();
+            
+            self.next_bag = (0..7).map(|i| Tetromino::from_i32(i).unwrap()).collect::<Vec<_>>();
+            self.next_bag.shuffle(&mut rand::thread_rng());
         }
     }
 }

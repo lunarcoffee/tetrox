@@ -64,7 +64,7 @@ impl<P: PieceKind> LivePiece<P> {
         LivePiece { coords, ..(*self) }
     }
 
-    fn rotated_cw(&self) -> LivePiece<P> {
+    fn rotated_cw(&self) -> LivePiece<P> { // TODO: need pivot coords
         let coords = self.coords.iter().map(|Coords(row, col)| Coords(*col, -row)).collect();
         LivePiece { coords, ..(*self) }
     }
@@ -105,7 +105,7 @@ impl<P: PieceKind> DefaultField<P> {
         // note how the center is left-aligned for even field widths
         let piece_origin = Coords(hidden as i32 - 2, width as i32 / 2 - 1);
 
-        DefaultField {
+        let mut field = DefaultField {
             width,
             height,
             hidden,
@@ -113,7 +113,9 @@ impl<P: PieceKind> DefaultField<P> {
             cur_piece: LivePiece::new(bag.next(), &piece_origin),
             held_piece: None,
             piece_origin,
-        }
+        };
+        field.draw_cur_piece();
+        field
     }
 
     pub fn width(&self) -> usize { self.width }

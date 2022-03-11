@@ -27,9 +27,18 @@ impl ops::Neg for Coords {
     fn neg(self) -> Self::Output { Coords(-self.0, -self.1) }
 }
 
+#[derive(Copy, Clone, PartialEq)]
+pub struct CoordsFloat(f64, f64);
+
 pub trait PieceKind: Copy {
     // coords of the squares composing the piece relative to the spawn coords
     fn spawn_offsets(&self) -> Vec<Coords>;
+
+    // index of the rotation pivot of the piece with a possibly zero offset
+    // pieces like the i tetromino have apparent pivots that intersect  
+    fn pivot_offset(&self, rotation_state: RotationState) -> (usize, Coords);
+
+    fn asset_name(&self) -> &str;
 }
 
 pub trait Bag<P: PieceKind> {
