@@ -1,5 +1,6 @@
 body {
-    background: black;
+    background: url("assets/bg.webp");
+    background-size: cover;
     text-align: center;
 }
 
@@ -7,7 +8,9 @@ body {
     margin-top: 110px;
 
     display: inline-flex;
-    border: 3px solid #333;
+    border: 4px solid #bbbbbb88;
+    border-radius: 4px;
+    box-shadow: 0 0 48px 0 #000000bb;
 }
 
 .field-canvas {

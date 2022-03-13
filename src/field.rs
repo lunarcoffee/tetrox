@@ -230,9 +230,14 @@ impl<P: PieceKind> DefaultField<P> {
         self.try_update_cur_piece(LivePiece::new(kind, &self.piece_origin))
     }
 
-    pub fn hard_drop(&mut self, bag: &mut impl Bag<P>) -> bool {
+    // swap the current piece with the shadow piece
+    pub fn project_down(&mut self) -> bool {
         let projected = self.cur_piece.projected_down(&self);
-        self.try_update_cur_piece(projected);
+        self.try_update_cur_piece(projected)
+    }
+
+    pub fn hard_drop(&mut self, bag: &mut impl Bag<P>) -> bool {
+        self.project_down();
         self.clear_lines();
         self.try_spawn_no_erase(bag)
     }

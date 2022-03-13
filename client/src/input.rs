@@ -40,11 +40,11 @@ pub struct InputStates {
 
 // das, arr, sdr in milliseconds
 pub const DELAYED_AUTO_SHIFT: u32 = 120;
-pub const AUTO_REPEAT_RATE: u32 = 20;
-pub const SOFT_DROP_RATE: u32 = 20;
+pub const AUTO_REPEAT_RATE: u32 = 0;
+pub const SOFT_DROP_RATE: u32 = 0;
 
 impl InputStates {
-    pub fn initial() -> Self {
+    pub fn new() -> Self {
         InputStates {
             pressed: Input::iter().map(|input| (input, false)).collect(),
             timers: vec![],
@@ -115,7 +115,11 @@ impl InputStates {
             link.send_message(BoardMessage::MoveDown);
 
             let interval = Interval::new(SOFT_DROP_RATE, move || {
-                link.send_message(BoardMessage::MoveDown);
+                if SOFT_DROP_RATE == 0 {
+                    link.send_message(BoardMessage::ProjectDown);
+                } else {
+                    link.send_message(BoardMessage::MoveDown);
+                }
             });
             self.timers.push((MoveDirection::Down, MoveTimer::Interval(interval)));
         }
@@ -128,7 +132,11 @@ impl InputStates {
         link.send_message(BoardMessage::MoveLeft);
 
         let interval = Interval::new(AUTO_REPEAT_RATE, move || {
-            link.send_message(BoardMessage::MoveLeft);
+            if AUTO_REPEAT_RATE == 0 {
+                link.send_message(BoardMessage::DasLeft);
+            } else {
+                link.send_message(BoardMessage::MoveLeft);
+            }
         });
         self.timers.push((MoveDirection::Left, MoveTimer::Interval(interval)));
 
@@ -140,7 +148,11 @@ impl InputStates {
         link.send_message(BoardMessage::MoveRight);
 
         let interval = Interval::new(AUTO_REPEAT_RATE, move || {
-            link.send_message(BoardMessage::MoveRight);
+            if AUTO_REPEAT_RATE == 0 {
+                link.send_message(BoardMessage::DasRight)
+            } else {
+                link.send_message(BoardMessage::MoveRight);
+            }
         });
         self.timers.push((MoveDirection::Right, MoveTimer::Interval(interval)));
 

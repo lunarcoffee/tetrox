@@ -15,11 +15,16 @@ mod input;
 pub enum BoardMessage {
     KeyPressed(KeyboardEvent),
     KeyReleased(KeyboardEvent),
+
     MoveLeft,
     MoveRight,
     MoveDown,
+
     MoveLeftAutoRepeat,
     MoveRightAutoRepeat,
+    DasLeft,
+    DasRight,
+    ProjectDown,
 }
 
 pub struct BoardModel {
@@ -30,6 +35,7 @@ pub struct BoardModel {
 }
 
 impl BoardModel {
+    // draw a square at the given coords on the canvas
     fn draw_square(&self, kind: &Tetromino, context: &CanvasRenderingContext2d, row: usize, col: usize) {
         let image_elem = HtmlImageElement::new_with_width_and_height(32, 32).unwrap();
         let asset_src = format!("assets/{}.png", kind.asset_name());
@@ -45,6 +51,13 @@ impl BoardModel {
             )
             .unwrap();
     }
+
+    fn reset(&mut self) -> bool {
+        self.bag = SevenBag::new();
+        self.field = DefaultField::new(10, 40, 20, &mut self.bag);
+        self.input_states = InputStates::new();
+        true
+    }
 }
 
 impl Component for BoardModel {
@@ -59,7 +72,7 @@ impl Component for BoardModel {
             bag,
             field,
             canvas: NodeRef::default(),
-            input_states: InputStates::initial(),
+            input_states: InputStates::new(),
         }
     }
 
@@ -81,6 +94,7 @@ impl Component for BoardModel {
                 " " => self
                     .input_states
                     .set_pressed_with_action(Input::HardDrop, || self.field.hard_drop(&mut self.bag)),
+                "`" => self.reset(),
                 _ => return false,
             },
             BoardMessage::KeyReleased(e) => match &e.key()[..] {
@@ -110,6 +124,15 @@ impl Component for BoardModel {
             BoardMessage::MoveDown => self.field.try_shift(1, 0),
             BoardMessage::MoveLeftAutoRepeat => self.input_states.left_held(ctx),
             BoardMessage::MoveRightAutoRepeat => self.input_states.right_held(ctx),
+            BoardMessage::DasLeft => {
+                while self.field.try_shift(0, -1) {}
+                true
+            }
+            BoardMessage::DasRight => {
+                while self.field.try_shift(0, 1) {}
+                true
+            }
+            BoardMessage::ProjectDown => self.field.project_down(),
         };
         true
     }
@@ -148,28 +171,48 @@ impl Component for BoardModel {
 
             context.clear_rect(0.0, 0.0, 32.0 * 10.0, 32.0 * 40.0);
 
-            context.set_stroke_style(&"#222".into());
-            for y_offset in 1..=9 {
-                for x_offset in 21..=39 {
-                    let y_center = y_offset as f64 * 32.0;
-                    let x_center = x_offset as f64 * 32.0;
+            context.set_stroke_style(&"black".into());
+            context.set_global_alpha(0.6);
+            context.fill_rect(0.0, 32.0 * 20.0, 32.0 * 10.0, 32.0 * 40.0);
+
+            context.set_stroke_style(&"#555".into());
+            
+            // draw grid crosshair marks
+            for col_n in 1..=9 {
+                for row_n in 21..=39 {
+                    let row = col_n as f64 * 32.0;
+                    let col = row_n as f64 * 32.0;
 
                     context.begin_path();
-                    context.move_to(y_center - 8.0, x_center);
-                    context.line_to(y_center + 8.0, x_center);
-                    context.move_to(y_center, x_center - 8.0);
-                    context.line_to(y_center, x_center + 8.0);
+                    context.move_to(row - 6.0, col);
+                    context.line_to(row + 6.0, col);
+                    context.move_to(row, col - 6.0);
+                    context.line_to(row, col + 6.0);
                     context.stroke();
                 }
             }
 
-            context.set_global_alpha(0.2);
+            // draw grid lines
+            context.set_global_alpha(0.3);
+            for col in 1..=9 {
+                context.begin_path();
+                context.move_to(col as f64 * 32.0, 32.0 * 20.0);
+                context.line_to(col as f64 * 32.0, 32.0 * 40.0);
+                context.stroke();
+            }
+            for row in 21..=39 {
+                context.begin_path();
+                context.move_to(0.0, row as f64 * 32.0);
+                context.line_to(32.0 * 40.0, row as f64 * 32.0);
+                context.stroke();
+            }
+
             let shadow_piece = self.field.shadow_piece();
             for Coords(row, col) in shadow_piece.coords() {
                 self.draw_square(&shadow_piece.kind(), &context, *row as usize, *col as usize);
             }
-            context.set_global_alpha(1.0);
 
+            context.set_global_alpha(1.0);
             for (row, line) in self.field.lines().iter().enumerate() {
                 for (col, square) in line.squares().iter().enumerate() {
                     match square {
