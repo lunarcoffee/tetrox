@@ -1,4 +1,4 @@
-use crate::{PieceKind, Coords, RotationState, Bag};
+use crate::{Bag, Coords, CoordsFloat, KickTable, KickTable180, PieceKind, RotationState};
 
 #[derive(Copy, Clone)]
 pub enum Square<P: PieceKind> {
@@ -55,32 +55,51 @@ impl<P: PieceKind> LivePiece<P> {
 
     pub fn kind(&self) -> P { self.kind }
 
+    pub fn rotation_state(&self) -> RotationState { self.rotation_state }
+
     fn shifted(&self, rows: i32, cols: i32) -> LivePiece<P> {
         let coords = self
             .coords
             .iter()
             .map(|Coords(row, col)| Coords(row + rows, col + cols))
             .collect();
+
         LivePiece { coords, ..(*self) }
     }
 
-    fn rotated_cw(&self) -> LivePiece<P> { // TODO: need pivot coords
-        let coords = self.coords.iter().map(|Coords(row, col)| Coords(*col, -row)).collect();
-        LivePiece { coords, ..(*self) }
+    // these rotations do not use kicks
+    fn rotated_cw(&self) -> LivePiece<P> {
+        let (pivot_index, offset) = self.kind.pivot_offset(self.rotation_state);
+        let pivot = self.coords[pivot_index].to_coords_float() + offset;
+
+        let rotation_state = self.rotation_state.next_cw();
+        let coords = self
+            .coords
+            .iter()
+            .map(|c| c.to_coords_float() - pivot)
+            .map(|CoordsFloat(row, col)| (CoordsFloat(col, -row) + pivot).to_coords())
+            .collect();
+
+        LivePiece {
+            coords,
+            rotation_state,
+            ..(*self)
+        }
     }
 
-    fn rotate_ccw(&self) -> LivePiece<P> {
-        let coords = self.coords.iter().map(|Coords(row, col)| Coords(-col, *row)).collect();
-        LivePiece { coords, ..(*self) }
-    }
+    fn rotated_ccw(&self) -> LivePiece<P> { self.rotated_cw().rotated_cw().rotated_cw() }
 
     fn rotated_180(&self) -> LivePiece<P> { self.rotated_cw().rotated_cw() }
 
-    fn is_blocked(&self, old_piece: &LivePiece<P>, field: &DefaultField<P>) -> bool {
+    // if the piece being checked has a previous state, `old_piece` should represent that state
+    fn is_blocked(&self, old_piece: Option<&LivePiece<P>>, field: &DefaultField<P>) -> bool {
         self.coords
             .iter()
             // make sure the coords are in bounds and are not filled by other pieces
-            .any(|c| !field.coords_in_bounds(&c) || !field.get_at(c).is_empty() && !old_piece.coords.contains(c))
+            .any(|c| {
+                !field.coords_in_bounds(&c)
+                    || !field.get_at(c).is_empty() && old_piece.map(|p| !p.coords.contains(c)).unwrap_or(true)
+            })
     }
 }
 
@@ -142,8 +161,35 @@ impl<P: PieceKind> DefaultField<P> {
 
     // move the current piece to a different position (fails if blocked)
     pub fn try_shift(&mut self, rows: i32, cols: i32) -> bool {
-        let updated = self.cur_piece.shifted(rows, cols);
-        self.try_update_cur_piece(updated)
+        self.try_update_cur_piece(self.cur_piece.shifted(rows, cols))
+    }
+
+    pub fn try_rotate_cw(&mut self, kick_table: &impl KickTable<P>) -> bool {
+        let kicks = kick_table.rotate_cw(self.cur_piece.kind(), self.cur_piece.rotation_state());
+        let rotated = self.cur_piece.rotated_cw();
+        self.try_rotate_with_kicks(kicks, rotated)
+    }
+
+    pub fn try_rotate_ccw(&mut self, kick_table: &impl KickTable<P>) -> bool {
+        let kicks = kick_table.rotate_ccw(self.cur_piece.kind(), self.cur_piece.rotation_state());
+        let rotated = self.cur_piece.rotated_ccw();
+        self.try_rotate_with_kicks(kicks, rotated)
+    }
+
+    pub fn try_rotate_180(&mut self, kick_table: &impl KickTable180<P>) -> bool {
+        let kicks = kick_table.rotate_180(self.cur_piece.kind(), self.cur_piece.rotation_state());
+        let rotated = self.cur_piece.rotated_180();
+        self.try_rotate_with_kicks(kicks, rotated)
+    }
+
+    // tries kicks on a rotated piece, swapping with the current piece if one fits
+    fn try_rotate_with_kicks(&mut self, kicks: Vec<Coords>, rotated: LivePiece<P>) -> bool {
+        kicks
+            .into_iter()
+            .map(|Coords(rows, cols)| rotated.shifted(rows, cols)) // apply kick to rotated piece
+            .find(|piece| !piece.is_blocked(Some(&self.cur_piece), &self)) // first kick that isn't blcoked
+            .map(|piece| self.try_update_cur_piece(piece)) // update if a fitting kicked rotation exists
+            .unwrap_or(false)
     }
 
     // tries to spawn a new piece using the provided bag, without erasing the current piece
@@ -152,7 +198,7 @@ impl<P: PieceKind> DefaultField<P> {
         let kind = bag.next();
         let new_piece = LivePiece::new(kind, &self.piece_origin);
 
-        let blocked = new_piece.is_blocked(&self.cur_piece, &self);
+        let blocked = new_piece.is_blocked(None, &self);
         if !blocked {
             self.cur_piece = new_piece;
             self.draw_cur_piece();
@@ -169,7 +215,7 @@ impl<P: PieceKind> DefaultField<P> {
 
     // changes and redraws the current piece if the new piece isn't blocked
     fn try_update_cur_piece(&mut self, new_piece: LivePiece<P>) -> bool {
-        let blocked = new_piece.is_blocked(&self.cur_piece, &self);
+        let blocked = new_piece.is_blocked(Some(&self.cur_piece), &self);
         if !blocked {
             self.erase_cur_piece();
             self.draw_piece(&new_piece);

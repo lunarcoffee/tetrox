@@ -8,3 +8,8 @@ tetrox = { path = "../" }
 
 yew = "0.19.3"
 getrandom = { version = "0.2.5", features = ["js"] }
+wasm-bindgen = "0.2.79"
+
+[dependencies.web-sys]
+version = "0.3.56"
+features = ["HtmlCanvasElement", "CanvasRenderingContext2d", "HtmlImageElement"]

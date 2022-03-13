@@ -4,7 +4,7 @@ use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use rand::prelude::SliceRandom;
 
-use crate::{Bag, Coords, KickTable, KickTable180, PieceKind, RotationState};
+use crate::{Bag, Coords, CoordsFloat, KickTable, KickTable180, PieceKind, RotationState};
 
 #[derive(Copy, Clone, Debug, FromPrimitive)]
 pub enum Tetromino {
@@ -12,9 +12,9 @@ pub enum Tetromino {
     Z,
     L,
     J,
-    I,
-    O,
     T,
+    O,
+    I,
 }
 
 impl PieceKind for Tetromino {
@@ -24,16 +24,34 @@ impl PieceKind for Tetromino {
             Tetromino::Z => [(0, 0), (0, 1), (-1, -1), (-1, 0)],
             Tetromino::L => [(0, -1), (0, 0), (0, 1), (-1, 1)],
             Tetromino::J => [(0, -1), (0, 0), (0, 1), (-1, -1)],
-            Tetromino::I => [(0, -1), (0, 0), (0, 1), (0, 2)],
-            Tetromino::O => [(0, 0), (0, 1), (-1, 0), (-1, 1)],
             Tetromino::T => [(0, -1), (0, 0), (0, 1), (-1, 0)],
+            Tetromino::O => [(0, 0), (0, 1), (-1, 0), (-1, 1)],
+            Tetromino::I => [(0, -1), (0, 0), (0, 1), (0, 2)],
         }
         .into_iter()
         .map(|(row, col)| Coords(row, col))
         .collect()
     }
 
-    fn pivot_offset(&self, rotation_state: RotationState) -> (usize, Coords) { todo!() }
+    fn pivot_offset(&self, rotation_state: RotationState) -> (usize, CoordsFloat) {
+        match self {
+            Tetromino::S => (1, CoordsFloat::zero()),
+            Tetromino::Z => (0, CoordsFloat::zero()),
+            Tetromino::L => (1, CoordsFloat::zero()),
+            Tetromino::J => (1, CoordsFloat::zero()),
+            Tetromino::T => (1, CoordsFloat::zero()),
+            Tetromino::O => (2, Tetromino::I.pivot_offset(rotation_state).1),
+            Tetromino::I => (
+                1,
+                match rotation_state {
+                    RotationState::Initial => CoordsFloat(0.5, 0.5),
+                    RotationState::Cw => CoordsFloat(0.5, -0.5),
+                    RotationState::Flipped => CoordsFloat(-0.5, -0.5),
+                    RotationState::Ccw => CoordsFloat(-0.5, 0.5),
+                },
+            ),
+        }
+    }
 
     fn asset_name(&self) -> &str {
         match self {
@@ -41,9 +59,9 @@ impl PieceKind for Tetromino {
             Tetromino::Z => "z",
             Tetromino::L => "l",
             Tetromino::J => "j",
-            Tetromino::I => "i",
-            Tetromino::O => "o",
             Tetromino::T => "t",
+            Tetromino::O => "o",
+            Tetromino::I => "i",
         }
     }
 }
@@ -60,13 +78,14 @@ impl SevenBag {
             next_bag: vec![],
         };
         bag.update_bags();
+        bag.update_bags();
         bag
     }
 
     fn update_bags(&mut self) {
         if self.cur_bag.is_empty() {
             self.cur_bag.extend(&self.next_bag);
-            
+
             self.next_bag = (0..7).map(|i| Tetromino::from_i32(i).unwrap()).collect::<Vec<_>>();
             self.next_bag.shuffle(&mut rand::thread_rng());
         }
@@ -94,16 +113,16 @@ impl KickTable<Tetromino> for SrsKickTable {
         match piece {
             Tetromino::O => vec![(0, 0)],
             Tetromino::I => match rotation_state {
-                RotationState::Initial => vec![(0, 0), (0, -2), (0, 1), (-1, -2), (2, 1)],
-                RotationState::Cw => vec![(0, 0), (0, -1), (0, 2), (2, -1), (-1, 2)],
-                RotationState::Flipped => vec![(0, 0), (0, 2), (0, -1), (1, 2), (-2, -1)],
-                RotationState::Ccw => vec![(0, 0), (0, 1), (0, -2), (-2, 1), (1, -2)],
+                RotationState::Initial => vec![(0, 0), (0, -2), (0, 1), (1, -2), (-2, 1)],
+                RotationState::Cw => vec![(0, 0), (0, -1), (0, 2), (-2, -1), (1, 2)],
+                RotationState::Flipped => vec![(0, 0), (0, 2), (0, -1), (-1, 2), (2, -1)],
+                RotationState::Ccw => vec![(0, 0), (0, 1), (0, -2), (2, 1), (-1, -2)],
             },
             _ => match rotation_state {
-                RotationState::Initial => vec![(0, 0), (0, -1), (1, -1), (-2, 0), (-2, -1)],
-                RotationState::Cw => vec![(0, 0), (0, 1), (-1, 1), (2, 0), (2, 1)],
-                RotationState::Flipped => vec![(0, 0), (0, 1), (1, 1), (-2, 0), (-2, 1)],
-                RotationState::Ccw => vec![(0, 0), (0, -1), (-1, -1), (2, 0), (2, -1)],
+                RotationState::Initial => vec![(0, 0), (0, -1), (-1, -1), (2, 0), (2, -1)],
+                RotationState::Cw => vec![(0, 0), (0, 1), (1, 1), (-2, 0), (-2, 1)],
+                RotationState::Flipped => vec![(0, 0), (0, 1), (-1, 1), (2, 0), (2, 1)],
+                RotationState::Ccw => vec![(0, 0), (0, -1), (1, -1), (-2, 0), (-2, -1)],
             },
         }
         .into_iter()
@@ -135,10 +154,10 @@ impl KickTable<Tetromino> for ExtendedSrsKickTable {
 impl KickTable180<Tetromino> for ExtendedSrsKickTable {
     fn rotate_180(&self, _piece: Tetromino, rotation_state: RotationState) -> Vec<Coords> {
         match rotation_state {
-            RotationState::Initial => vec![(0, 0), (0, 1), (1, 1), (-1, 1), (1, 0), (-1, 0)],
-            RotationState::Cw => vec![(0, 0), (1, 0), (1, 2), (1, 1), (0, 2), (0, 1)],
-            RotationState::Flipped => vec![(0, 0), (0, -1), (-1, -1), (1, -1), (-1, 0), (1, 0)],
-            RotationState::Ccw => vec![(0, 0), (-1, 0), (-1, 2), (-1, 1), (0, 2), (0, 1)],
+            RotationState::Initial => vec![(0, 0), (-1, 0), (-1, 1), (-1, -1), (0, 1), (0, -1)],
+            RotationState::Cw => vec![(0, 0), (0, 1), (-2, 1), (-1, 1), (-2, 0), (-1, 0)],
+            RotationState::Flipped => vec![(0, 0), (1, 0), (1, -1), (1, 1), (0, -1), (0, 1)],
+            RotationState::Ccw => vec![(0, 0), (0, -1), (-2, -1), (-1, -1), (-2, 0), (-1, 0)],
         }
         .into_iter()
         .map(|(row_shift, col_shift)| Coords(row_shift, col_shift))

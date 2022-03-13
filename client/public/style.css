@@ -1,18 +1,19 @@
-.field {
-    display: inline-flex;
-    flex-direction: column;
-}
-
-.field-line {
-    display: inline-flex;
-    flex-direction: row;
-}
-
-.field-square {
-    width: 18px;
-    height: 18px;
-}
-
-.field-square-empty {
+body {
     background: black;
+    text-align: center;
+}
+
+.field {
+    margin-top: 110px;
+
+    display: inline-flex;
+    border: 4px solid #444;
+}
+
+.field-canvas {
+    margin-top: -640px;
+}
+
+.field-canvas:focus {
+    outline: none;
 }

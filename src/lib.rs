@@ -6,8 +6,12 @@ use std::ops;
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct Coords(i32, i32);
+
+impl Coords {
+    pub fn to_coords_float(self) -> CoordsFloat { CoordsFloat(self.0 as f64, self.1 as f64) }
+}
 
 impl ops::Add for Coords {
     type Output = Coords;
@@ -27,16 +31,34 @@ impl ops::Neg for Coords {
     fn neg(self) -> Self::Output { Coords(-self.0, -self.1) }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub struct CoordsFloat(f64, f64);
+
+impl CoordsFloat {
+    pub fn zero() -> CoordsFloat { CoordsFloat(0., 0.) }
+
+    pub fn to_coords(self) -> Coords { Coords(self.0 as i32, self.1 as i32) }
+}
+
+impl ops::Add for CoordsFloat {
+    type Output = CoordsFloat;
+
+    fn add(self, CoordsFloat(row2, col2): Self) -> Self::Output { CoordsFloat(self.0 + row2, self.1 + col2) }
+}
+
+impl ops::Sub for CoordsFloat {
+    type Output = CoordsFloat;
+
+    fn sub(self, CoordsFloat(row2, col2): Self) -> Self::Output { CoordsFloat(self.0 - row2, self.1 - col2) }
+}
 
 pub trait PieceKind: Copy {
     // coords of the squares composing the piece relative to the spawn coords
     fn spawn_offsets(&self) -> Vec<Coords>;
 
     // index of the rotation pivot of the piece with a possibly zero offset
-    // pieces like the i tetromino have apparent pivots that intersect  
-    fn pivot_offset(&self, rotation_state: RotationState) -> (usize, Coords);
+    // pieces like the i tetromino have apparent pivots that intersect
+    fn pivot_offset(&self, rotation_state: RotationState) -> (usize, CoordsFloat);
 
     fn asset_name(&self) -> &str;
 }
