@@ -7,7 +7,7 @@ use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub struct Coords(i32, i32);
+pub struct Coords(pub i32, pub i32);
 
 impl Coords {
     pub fn to_coords_float(self) -> CoordsFloat { CoordsFloat(self.0 as f64, self.1 as f64) }
@@ -32,7 +32,7 @@ impl ops::Neg for Coords {
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
-pub struct CoordsFloat(f64, f64);
+pub struct CoordsFloat(pub f64, pub f64);
 
 impl CoordsFloat {
     pub fn zero() -> CoordsFloat { CoordsFloat(0., 0.) }

@@ -10,6 +10,7 @@ impl<P: PieceKind> Square<P> {
     fn is_empty(&self) -> bool { matches!(self, Square::Empty) }
 }
 
+#[derive(Clone)]
 pub struct Line<P: PieceKind> {
     squares: Vec<Square<P>>,
 }
@@ -23,7 +24,8 @@ impl<P: PieceKind> Line<P> {
 
     pub fn squares(&self) -> &[Square<P>] { &self.squares }
 
-    fn is_clear(&self) -> bool { self.squares.iter().all(|s| matches!(s, Square::Empty)) }
+    // all squares are the same
+    fn is_clear(&self) -> bool { self.squares.iter().all(|s| !s.is_empty()) }
 
     fn get(&self, i: usize) -> Square<P> { self.squares[i] }
 
@@ -90,6 +92,19 @@ impl<P: PieceKind> LivePiece<P> {
     fn rotated_ccw(&self) -> LivePiece<P> { self.rotated_cw().rotated_cw().rotated_cw() }
 
     fn rotated_180(&self) -> LivePiece<P> { self.rotated_cw().rotated_cw() }
+
+    // shadow piece, hard drop position, etc.
+    fn projected_down(&self, field: &DefaultField<P>) -> LivePiece<P> {
+        let shifted = self.shifted(1, 0);
+        if shifted.is_blocked(Some(&self), field) {
+            LivePiece {
+                coords: self.coords.clone(),
+                ..(*self)
+            }
+        } else {
+            shifted.projected_down(field)
+        }
+    }
 
     // if the piece being checked has a previous state, `old_piece` should represent that state
     fn is_blocked(&self, old_piece: Option<&LivePiece<P>>, field: &DefaultField<P>) -> bool {
@@ -159,6 +174,8 @@ impl<P: PieceKind> DefaultField<P> {
 
     pub fn held_piece(&self) -> Option<&LivePiece<P>> { self.held_piece.as_ref() }
 
+    pub fn shadow_piece(&self) -> LivePiece<P> { self.cur_piece.projected_down(&self) }
+
     // move the current piece to a different position (fails if blocked)
     pub fn try_shift(&mut self, rows: i32, cols: i32) -> bool {
         self.try_update_cur_piece(self.cur_piece.shifted(rows, cols))
@@ -211,6 +228,26 @@ impl<P: PieceKind> DefaultField<P> {
     pub fn try_spawn(&mut self, bag: &mut impl Bag<P>) -> bool {
         let kind = bag.next();
         self.try_update_cur_piece(LivePiece::new(kind, &self.piece_origin))
+    }
+
+    pub fn hard_drop(&mut self, bag: &mut impl Bag<P>) -> bool {
+        let projected = self.cur_piece.projected_down(&self);
+        self.try_update_cur_piece(projected);
+        self.clear_lines();
+        self.try_spawn_no_erase(bag)
+    }
+
+    pub fn clear_lines(&mut self) {
+        let uncleared_lines = self
+            .lines
+            .iter()
+            .filter(|l| !l.is_clear())
+            .map(|l| l.clone())
+            .collect::<Vec<_>>();
+
+        let cleared_range = 0..self.height - uncleared_lines.len();
+        self.lines = cleared_range.map(|_| Line::new(self.width)).collect();
+        self.lines.extend(uncleared_lines);
     }
 
     // changes and redraws the current piece if the new piece isn't blocked

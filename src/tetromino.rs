@@ -1,12 +1,12 @@
 use std::ops;
 
-use num_derive::FromPrimitive;
-use num_traits::FromPrimitive;
 use rand::prelude::SliceRandom;
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
 
 use crate::{Bag, Coords, CoordsFloat, KickTable, KickTable180, PieceKind, RotationState};
 
-#[derive(Copy, Clone, Debug, FromPrimitive)]
+#[derive(Copy, Clone, Debug, EnumIter)]
 pub enum Tetromino {
     S,
     Z,
@@ -78,7 +78,6 @@ impl SevenBag {
             next_bag: vec![],
         };
         bag.update_bags();
-        bag.update_bags();
         bag
     }
 
@@ -86,7 +85,7 @@ impl SevenBag {
         if self.cur_bag.is_empty() {
             self.cur_bag.extend(&self.next_bag);
 
-            self.next_bag = (0..7).map(|i| Tetromino::from_i32(i).unwrap()).collect::<Vec<_>>();
+            self.next_bag = Tetromino::iter().collect::<Vec<_>>();
             self.next_bag.shuffle(&mut rand::thread_rng());
         }
     }
