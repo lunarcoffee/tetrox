@@ -99,7 +99,7 @@ impl Bag<Tetromino> for SevenBag {
 
     fn peek(&mut self) -> Box<dyn Iterator<Item = &Tetromino> + '_> {
         self.update_bags();
-        Box::new(self.cur_bag.iter().chain(self.next_bag.iter()).take(7))
+        Box::new(self.cur_bag.iter().rev().chain(self.next_bag.iter().rev()).take(7))
     }
 
     fn lookahead(&self) -> usize { 7 }
