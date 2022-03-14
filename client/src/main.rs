@@ -40,7 +40,7 @@ pub struct BoardModel {
 const LABEL_HEIGHT: usize = 30; // height of "hold" and "next" labels
 const PIECE_HEIGHT: usize = 100; // height of hold/queue piece
 const SIDE_BAR_WIDTH: usize = 170; // width of hold/queue panels
-const SIDE_BAR_PADDING: usize = 8; // bottom padding of hold/queue panels
+const SIDE_BAR_PADDING: usize = 6; // bottom padding of hold/queue panels
 const SQUARE_MUL: usize = 32; // the size of each square on the field
 
 impl BoardModel {
@@ -223,14 +223,19 @@ impl BoardModel {
             .unwrap();
     }
 
+    // transforms `coords` so that if a square is drawn from each set of coords, the entire image will be centered
+    // around the origin
     fn center_coords_around_origin(coords: Vec<Coords>) -> Vec<Coords> {
         let min_col = coords.iter().min_by_key(|Coords(_, col)| col).unwrap().1;
         let max_col = coords.iter().max_by_key(|Coords(_, col)| col).unwrap().1;
         let min_row = coords.iter().min_by_key(|Coords(row, _)| row).unwrap().0;
         let max_row = coords.iter().max_by_key(|Coords(row, _)| row).unwrap().0;
+
         let offset = Coords((max_row + min_row) / 2, (max_col + min_col) / 2);
         coords
             .into_iter()
+            // (0, 0) is not the center since images are drawn from the top-left corner
+            // the actual center is half a `SQUARE_MUL` away in both directions
             .map(|c| c - offset - Coords(SQUARE_MUL as i32 / 2, SQUARE_MUL as i32 / 2))
             .collect()
     }
@@ -304,12 +309,20 @@ impl Component for BoardModel {
             BoardMessage::MoveLeftAutoRepeat => self.input_states.left_held(ctx),
             BoardMessage::MoveRightAutoRepeat => self.input_states.right_held(ctx),
             BoardMessage::DasLeft => {
-                while self.field.try_shift(0, -1) {}
-                true
+                if !self.input_states.is_pressed(Input::Right) {
+                    while self.field.try_shift(0, -1) {}
+                    true
+                } else {
+                    false
+                }
             }
             BoardMessage::DasRight => {
-                while self.field.try_shift(0, 1) {}
-                true
+                if !self.input_states.is_pressed(Input::Left) {
+                    while self.field.try_shift(0, 1) {}
+                    true
+                } else {
+                    false
+                }
             }
             BoardMessage::ProjectDown => self.field.project_down(),
         };
@@ -333,6 +346,8 @@ impl Component for BoardModel {
                 <div class="field">
                     <canvas ref={ self.field_canvas.clone() }
                             class="field-canvas"
+                            // to hide the hidden area of the board
+                            style={ format!("margin-top: -{}px;", SQUARE_MUL * self.field.hidden()) }
                             tabindex="0"
                             onkeydown={ key_pressed_callback }
                             onkeyup={ key_released_callback }
@@ -344,8 +359,8 @@ impl Component for BoardModel {
                     <canvas ref={ self.next_queue_canvas.clone() }
                             class="next-queue-canvas"
                             width={ SIDE_BAR_WIDTH.to_string() }
-                            height={ 
-                                (LABEL_HEIGHT + PIECE_HEIGHT * self.field.queue_len() + SIDE_BAR_PADDING).to_string() 
+                            height={
+                                (LABEL_HEIGHT + PIECE_HEIGHT * self.field.queue_len() + SIDE_BAR_PADDING).to_string()
                             }>
                     </canvas>
                 </div>

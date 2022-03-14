@@ -24,8 +24,8 @@ impl<P: PieceKind> Line<P> {
 
     pub fn squares(&self) -> &[Square<P>] { &self.squares }
 
-    // all squares are the same
-    fn is_clear(&self) -> bool { self.squares.iter().all(|s| !s.is_empty()) }
+    // all squares are filled (not empty or solid garbage)
+    fn is_clear(&self) -> bool { self.squares.iter().all(|s| matches!(s, Square::Filled(_))) }
 
     fn get(&self, i: usize) -> Square<P> { self.squares[i] }
 

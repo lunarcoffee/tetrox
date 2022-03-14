@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use gloo_timers::callback::{Interval, Timeout};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
-use yew::Context;
+use yew::{html::Scope, Context};
 
 use crate::{BoardMessage, BoardModel};
 
@@ -112,15 +112,9 @@ impl InputStates {
             self.set_pressed(Input::SoftDrop);
 
             let link = ctx.link().clone();
-            link.send_message(BoardMessage::MoveDown);
+            Self::send_soft_drop_move_message(&link);
 
-            let interval = Interval::new(SOFT_DROP_RATE, move || {
-                if SOFT_DROP_RATE == 0 {
-                    link.send_message(BoardMessage::ProjectDown);
-                } else {
-                    link.send_message(BoardMessage::MoveDown);
-                }
-            });
+            let interval = Interval::new(SOFT_DROP_RATE, move || Self::send_soft_drop_move_message(&link));
             self.timers.push((MoveDirection::Down, MoveTimer::Interval(interval)));
         }
         !soft_drop_down
@@ -129,15 +123,9 @@ impl InputStates {
     // keep shifting left while the left input is pressed
     pub fn left_held(&mut self, ctx: &Context<BoardModel>) -> bool {
         let link = ctx.link().clone();
-        link.send_message(BoardMessage::MoveLeft);
+        Self::send_left_hold_move_message(&link);
 
-        let interval = Interval::new(AUTO_REPEAT_RATE, move || {
-            if AUTO_REPEAT_RATE == 0 {
-                link.send_message(BoardMessage::DasLeft);
-            } else {
-                link.send_message(BoardMessage::MoveLeft);
-            }
-        });
+        let interval = Interval::new(AUTO_REPEAT_RATE, move || Self::send_left_hold_move_message(&link));
         self.timers.push((MoveDirection::Left, MoveTimer::Interval(interval)));
 
         false
@@ -145,15 +133,9 @@ impl InputStates {
 
     pub fn right_held(&mut self, ctx: &Context<BoardModel>) -> bool {
         let link = ctx.link().clone();
-        link.send_message(BoardMessage::MoveRight);
+        Self::send_right_hold_move_message(&link);
 
-        let interval = Interval::new(AUTO_REPEAT_RATE, move || {
-            if AUTO_REPEAT_RATE == 0 {
-                link.send_message(BoardMessage::DasRight)
-            } else {
-                link.send_message(BoardMessage::MoveRight);
-            }
-        });
+        let interval = Interval::new(AUTO_REPEAT_RATE, move || Self::send_right_hold_move_message(&link));
         self.timers.push((MoveDirection::Right, MoveTimer::Interval(interval)));
 
         false
@@ -178,5 +160,31 @@ impl InputStates {
         self.set_released(Input::SoftDrop);
         self.timers.retain(|t| !matches!(t, (MoveDirection::Down, ..)));
         false
+    }
+
+    // move or project the piece down based on the sdr
+    pub fn send_soft_drop_move_message(link: &Scope<BoardModel>) {
+        if SOFT_DROP_RATE == 0 {
+            link.send_message(BoardMessage::ProjectDown);
+        } else {
+            link.send_message(BoardMessage::MoveDown);
+        }
+    }
+
+    // move or das the piece left based on the arr
+    pub fn send_left_hold_move_message(link: &Scope<BoardModel>) {
+        if AUTO_REPEAT_RATE == 0 {
+            link.send_message(BoardMessage::DasLeft)
+        } else {
+            link.send_message(BoardMessage::MoveLeft);
+        }
+    }
+
+    pub fn send_right_hold_move_message(link: &Scope<BoardModel>) {
+        if AUTO_REPEAT_RATE == 0 {
+            link.send_message(BoardMessage::DasRight)
+        } else {
+            link.send_message(BoardMessage::MoveRight);
+        }
     }
 }
