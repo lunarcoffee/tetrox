@@ -30,31 +30,162 @@ pub enum BoardMessage {
 pub struct BoardModel {
     bag: SevenBag,
     field: DefaultField<Tetromino>,
-    canvas: NodeRef,
     input_states: InputStates,
+
+    field_canvas: NodeRef,
+    hold_piece_canvas: NodeRef,
+    next_queue_canvas: NodeRef,
 }
 
+const HOLD_PIECE_WIDTH: usize = 170;
+const HOLD_PIECE_HEIGHT: usize = 130;
+
+// the size of each square
+const FIELD_SQUARE_MUL: usize = 32;
+
+const NEXT_QUEUE_WIDTH: usize = 170;
+const NEXT_QUEUE_BASE: usize = 20; // height reserved for "queue" label
+const NEXT_QUEUE_HEIGHT_MUL: usize = 100; // height per piece shown in next queue
+
 impl BoardModel {
+    fn draw_hold_piece(&self) {
+        if let Some(canvas) = self.hold_piece_canvas.cast::<HtmlCanvasElement>() {
+            let context = canvas
+                .get_context("2d")
+                .unwrap()
+                .unwrap()
+                .dyn_into::<CanvasRenderingContext2d>()
+                .unwrap();
+
+            context.set_fill_style(&"black".into());
+            context.clear_rect(0.0, 0.0, HOLD_PIECE_WIDTH as f64, HOLD_PIECE_HEIGHT as f64);
+
+            // fill background
+            context.set_stroke_style(&"black".into());
+            context.set_global_alpha(0.6);
+            context.fill_rect(0.0, 0.0, HOLD_PIECE_WIDTH as f64, HOLD_PIECE_HEIGHT as f64);
+
+            // draw label
+            context.set_fill_style(&"#bbb".into());
+            context.set_global_alpha(1.0);
+            context.set_font("18px 'IBM Plex Sans'");
+            context.fill_text("hold", 8.0, 24.0).unwrap();
+        }
+    }
+
+    fn draw_field(&self, first_render: bool) {
+        // field width and height in squares
+        let fw = self.field.width() as f64;
+        let fh = self.field.height() as f64;
+
+        // units in pixels
+        let fw_px = FIELD_SQUARE_MUL as f64 * fw;
+        let fh_px = FIELD_SQUARE_MUL as f64 * fh;
+        let fhidden_end_px = (self.field.hidden() * FIELD_SQUARE_MUL) as f64; // end of board hidden area
+
+        if let Some(canvas) = self.field_canvas.cast::<HtmlCanvasElement>() {
+            if first_render {
+                canvas.focus().unwrap();
+            }
+
+            let context = canvas
+                .get_context("2d")
+                .unwrap()
+                .unwrap()
+                .dyn_into::<CanvasRenderingContext2d>()
+                .unwrap();
+
+            context.set_fill_style(&"black".into());
+            context.clear_rect(0.0, 0.0, fw_px, fh_px);
+
+            // fill background
+            context.set_global_alpha(0.6);
+            context.fill_rect(0.0, fhidden_end_px, fw_px, fh_px);
+
+            context.set_stroke_style(&"#555".into());
+            context.set_global_alpha(0.3);
+
+            // vertical grid lines
+            for col in 1..self.field.width() {
+                context.begin_path();
+                context.move_to((col * FIELD_SQUARE_MUL) as f64, fhidden_end_px);
+                context.line_to((col * FIELD_SQUARE_MUL) as f64, fh_px);
+                context.stroke();
+            }
+
+            // horizontal grid lines (only for non-hidden board area)
+            for row in self.field.hidden() + 1..self.field.height() {
+                context.begin_path();
+                context.move_to(0.0, (row * FIELD_SQUARE_MUL) as f64);
+                context.line_to(fh_px, (row * FIELD_SQUARE_MUL) as f64);
+                context.stroke();
+            }
+
+            let shadow_piece = self.field.shadow_piece();
+            for Coords(row, col) in shadow_piece.coords() {
+                self.draw_square(&shadow_piece.kind(), &context, *row as usize, *col as usize);
+            }
+
+            context.set_global_alpha(1.0);
+            for (row, line) in self.field.lines().iter().enumerate() {
+                for (col, square) in line.squares().iter().enumerate() {
+                    if let Square::Filled(kind) = square {
+                        self.draw_square(kind, &context, row, col)
+                    }
+                }
+            }
+        }
+    }
+
     // draw a square at the given coords on the canvas
     fn draw_square(&self, kind: &Tetromino, context: &CanvasRenderingContext2d, row: usize, col: usize) {
-        let image_elem = HtmlImageElement::new_with_width_and_height(32, 32).unwrap();
+        let field_square_mul = FIELD_SQUARE_MUL as u32;
+        let image_elem = HtmlImageElement::new_with_width_and_height(field_square_mul, field_square_mul).unwrap();
         let asset_src = format!("assets/{}.png", kind.asset_name());
         image_elem.set_src(&asset_src);
 
         context
             .draw_image_with_html_image_element_and_dw_and_dh(
                 &image_elem,
-                32.0 * col as f64,
-                32.0 * row as f64,
-                32.0,
-                32.0,
+                (FIELD_SQUARE_MUL * col) as f64,
+                (FIELD_SQUARE_MUL * row) as f64,
+                FIELD_SQUARE_MUL as f64,
+                FIELD_SQUARE_MUL as f64,
             )
             .unwrap();
     }
 
+    fn draw_next_queue(&self) {
+        // total height of queue in pixels
+        let nq_h_px = (NEXT_QUEUE_BASE + NEXT_QUEUE_HEIGHT_MUL * self.field.queue_len()) as f64;
+
+        if let Some(canvas) = self.next_queue_canvas.cast::<HtmlCanvasElement>() {
+            let context = canvas
+                .get_context("2d")
+                .unwrap()
+                .unwrap()
+                .dyn_into::<CanvasRenderingContext2d>()
+                .unwrap();
+
+            context.set_fill_style(&"black".into());
+            context.clear_rect(0.0, 0.0, NEXT_QUEUE_WIDTH as f64, nq_h_px);
+
+            // fill background
+            context.set_stroke_style(&"black".into());
+            context.set_global_alpha(0.6);
+            context.fill_rect(0.0, 0.0, NEXT_QUEUE_WIDTH as f64, nq_h_px);
+
+            // draw label
+            context.set_fill_style(&"#bbb".into());
+            context.set_global_alpha(1.0);
+            context.set_font("18px 'IBM Plex Sans'");
+            context.fill_text("next", 8.0, 24.0).unwrap();
+        }
+    }
+
     fn reset(&mut self) -> bool {
         self.bag = SevenBag::new();
-        self.field = DefaultField::new(10, 40, 20, &mut self.bag);
+        self.field = DefaultField::new(10, 40, 20, 5, &mut self.bag);
         self.input_states = InputStates::new();
         true
     }
@@ -66,13 +197,15 @@ impl Component for BoardModel {
 
     fn create(_ctx: &Context<Self>) -> Self {
         let mut bag = SevenBag::new();
-        let field = DefaultField::new(10, 40, 20, &mut bag);
+        let field = DefaultField::new(10, 40, 20, 5, &mut bag);
 
         BoardModel {
             bag,
             field,
-            canvas: NodeRef::default(),
             input_states: InputStates::new(),
+            field_canvas: NodeRef::default(),
+            hold_piece_canvas: NodeRef::default(),
+            next_queue_canvas: NodeRef::default(),
         }
     }
 
@@ -91,6 +224,7 @@ impl Component for BoardModel {
                 "a" => self
                     .input_states
                     .set_pressed_with_action(Input::Rotate180, || self.field.try_rotate_180(&ExtendedSrsKickTable)),
+                "d" => self.field.swap_hold_piece(&mut self.bag),
                 " " => self
                     .input_states
                     .set_pressed_with_action(Input::HardDrop, || self.field.hard_drop(&mut self.bag)),
@@ -143,85 +277,39 @@ impl Component for BoardModel {
         let key_released_callback = link.callback(|e| BoardMessage::KeyReleased(e));
 
         html! {
-            <div class="field">
-                <canvas ref={ self.canvas.clone() }
-                        class="field-canvas"
-                        tabindex="0"
-                        onkeydown={ key_pressed_callback }
-                        onkeyup={ key_released_callback }
-                        width={ "320" }
-                        height={ "1280" }>
-                </canvas>
+            <div class="game">
+                <div class="hold-piece">
+                    <canvas ref={ self.hold_piece_canvas.clone() }
+                            class="hold-piece-canvas"
+                            width={ HOLD_PIECE_WIDTH.to_string() }
+                            height={ HOLD_PIECE_HEIGHT.to_string() }>
+                    </canvas>
+                </div>
+                <div class="field">
+                    <canvas ref={ self.field_canvas.clone() }
+                            class="field-canvas"
+                            tabindex="0"
+                            onkeydown={ key_pressed_callback }
+                            onkeyup={ key_released_callback }
+                            width={ (FIELD_SQUARE_MUL * self.field.width()).to_string() }
+                            height={ (FIELD_SQUARE_MUL * self.field.height()).to_string() }>
+                    </canvas>
+                </div>
+                <div class="next-queue">
+                    <canvas ref={ self.next_queue_canvas.clone() }
+                            class="next-queue-canvas"
+                            width={ NEXT_QUEUE_WIDTH.to_string() }
+                            height={ (NEXT_QUEUE_BASE + NEXT_QUEUE_HEIGHT_MUL * self.field.queue_len()).to_string() }>
+                    </canvas>
+                </div>
             </div>
         }
     }
 
     fn rendered(&mut self, _ctx: &Context<Self>, first_render: bool) {
-        if let Some(canvas) = self.canvas.cast::<HtmlCanvasElement>() {
-            if first_render {
-                canvas.focus().unwrap();
-            }
-
-            let context = canvas
-                .get_context("2d")
-                .unwrap()
-                .unwrap()
-                .dyn_into::<CanvasRenderingContext2d>()
-                .unwrap();
-
-            context.clear_rect(0.0, 0.0, 32.0 * 10.0, 32.0 * 40.0);
-
-            context.set_stroke_style(&"black".into());
-            context.set_global_alpha(0.6);
-            context.fill_rect(0.0, 32.0 * 20.0, 32.0 * 10.0, 32.0 * 40.0);
-
-            context.set_stroke_style(&"#555".into());
-            
-            // draw grid crosshair marks
-            for col_n in 1..=9 {
-                for row_n in 21..=39 {
-                    let row = col_n as f64 * 32.0;
-                    let col = row_n as f64 * 32.0;
-
-                    context.begin_path();
-                    context.move_to(row - 6.0, col);
-                    context.line_to(row + 6.0, col);
-                    context.move_to(row, col - 6.0);
-                    context.line_to(row, col + 6.0);
-                    context.stroke();
-                }
-            }
-
-            // draw grid lines
-            context.set_global_alpha(0.3);
-            for col in 1..=9 {
-                context.begin_path();
-                context.move_to(col as f64 * 32.0, 32.0 * 20.0);
-                context.line_to(col as f64 * 32.0, 32.0 * 40.0);
-                context.stroke();
-            }
-            for row in 21..=39 {
-                context.begin_path();
-                context.move_to(0.0, row as f64 * 32.0);
-                context.line_to(32.0 * 40.0, row as f64 * 32.0);
-                context.stroke();
-            }
-
-            let shadow_piece = self.field.shadow_piece();
-            for Coords(row, col) in shadow_piece.coords() {
-                self.draw_square(&shadow_piece.kind(), &context, *row as usize, *col as usize);
-            }
-
-            context.set_global_alpha(1.0);
-            for (row, line) in self.field.lines().iter().enumerate() {
-                for (col, square) in line.squares().iter().enumerate() {
-                    match square {
-                        Square::Filled(kind) => self.draw_square(kind, &context, row, col),
-                        _ => {}
-                    }
-                }
-            }
-        }
+        self.draw_hold_piece();
+        self.draw_field(first_render);
+        self.draw_next_queue();
     }
 }
 

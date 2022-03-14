@@ -1,22 +1,56 @@
 body {
     background: url("assets/bg.webp");
     background-size: cover;
-    text-align: center;
+}
+
+.game {
+    justify-content: center;
+
+    display: flex;
+    flex-direction: row;
+}
+
+.hold-piece {
+    margin-top: 110px;
+}
+
+.hold-piece-canvas {
+    margin-right: 30px;
+    
+    border: 4px solid #bbbbbb88;
+    border-radius: 4px;
+
+    box-shadow: 0 0 36px 0 #000000bb;
 }
 
 .field {
     margin-top: 110px;
-
-    display: inline-flex;
+    
     border: 4px solid #bbbbbb88;
     border-radius: 4px;
-    box-shadow: 0 0 48px 0 #000000bb;
+    border-top: none;
+
+    box-shadow: 0 0 36px 0 #000000bb;
 }
 
 .field-canvas {
     margin-top: -640px;
+    margin-bottom: -4px; /* ??? */
 }
 
 .field-canvas:focus {
     outline: none;
+}
+
+.next-queue {
+    margin-top: 110px;
+}
+
+.next-queue-canvas {
+    margin-left: 30px;
+
+    border: 4px solid #bbbbbb88;
+    border-radius: 4px;
+
+    box-shadow: 0 0 36px 0 #000000bb;
 }

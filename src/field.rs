@@ -122,16 +122,18 @@ pub struct DefaultField<P: PieceKind> {
     width: usize,
     height: usize,
     hidden: usize,
+    queue_len: usize,
 
     lines: Vec<Line<P>>,
 
     cur_piece: LivePiece<P>,
-    held_piece: Option<LivePiece<P>>,
+    hold_piece: Option<P>,
+    hold_swapped: bool,
     piece_origin: Coords,
 }
 
 impl<P: PieceKind> DefaultField<P> {
-    pub fn new(width: usize, height: usize, hidden: usize, bag: &mut impl Bag<P>) -> Self {
+    pub fn new(width: usize, height: usize, hidden: usize, queue_len: usize, bag: &mut impl Bag<P>) -> Self {
         // coordinates of the center (left-aligned) of the bottom-most line of pieces spawned on this field
         // i.e. the coordinates of the @ sign in the following 10-wide field:
         // |    #     |
@@ -143,9 +145,11 @@ impl<P: PieceKind> DefaultField<P> {
             width,
             height,
             hidden,
+            queue_len,
             lines: (0..height).map(|_| Line::new(width)).collect(),
             cur_piece: LivePiece::new(bag.next(), &piece_origin),
-            held_piece: None,
+            hold_piece: None,
+            hold_swapped: false,
             piece_origin,
         };
         field.draw_cur_piece();
@@ -162,6 +166,8 @@ impl<P: PieceKind> DefaultField<P> {
 
     pub fn hidden(&self) -> usize { self.hidden }
 
+    pub fn queue_len(&self) -> usize { self.queue_len }
+
     pub fn lines(&self) -> &[Line<P>] { &self.lines }
 
     pub fn get_at(&self, Coords(row, col): &Coords) -> Square<P> { self.lines[*row as usize].get(*col as usize) }
@@ -172,7 +178,7 @@ impl<P: PieceKind> DefaultField<P> {
 
     pub fn cur_piece(&self) -> &LivePiece<P> { &self.cur_piece }
 
-    pub fn held_piece(&self) -> Option<&LivePiece<P>> { self.held_piece.as_ref() }
+    pub fn hold_piece(&self) -> Option<P> { self.hold_piece }
 
     pub fn shadow_piece(&self) -> LivePiece<P> { self.cur_piece.projected_down(&self) }
 
@@ -224,10 +230,26 @@ impl<P: PieceKind> DefaultField<P> {
     }
 
     // same as `try_spawn_no_erase` but erases the current piece
-    // behaves like swapping out a held piece
+    // behaves like swapping out a hold piece
     pub fn try_spawn(&mut self, bag: &mut impl Bag<P>) -> bool {
         let kind = bag.next();
         self.try_update_cur_piece(LivePiece::new(kind, &self.piece_origin))
+    }
+
+    pub fn swap_hold_piece(&mut self, bag: &mut impl Bag<P>) -> bool {
+        if self.hold_swapped {
+            false
+        } else {
+            self.hold_swapped = true;
+            let hold_kind = self.hold_piece;
+            self.hold_piece = Some(self.cur_piece.kind());
+
+            if let Some(kind) = hold_kind {
+                self.try_update_cur_piece(LivePiece::new(kind, &self.piece_origin))
+            } else {
+                self.try_spawn(bag)
+            }
+        }
     }
 
     // swap the current piece with the shadow piece
@@ -237,6 +259,7 @@ impl<P: PieceKind> DefaultField<P> {
     }
 
     pub fn hard_drop(&mut self, bag: &mut impl Bag<P>) -> bool {
+        self.hold_swapped = false;
         self.project_down();
         self.clear_lines();
         self.try_spawn_no_erase(bag)
