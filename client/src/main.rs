@@ -1,6 +1,9 @@
 #![feature(stmt_expr_attributes)]
 
+use std::collections::HashMap;
+
 use input::{Input, InputStates};
+use strum::IntoEnumIterator;
 use tetrox::{
     field::{DefaultField, Square},
     tetromino::{ExtendedSrsKickTable, SevenBag, SrsKickTable, Tetromino},
@@ -35,7 +38,11 @@ pub struct BoardModel {
     field_canvas: NodeRef,
     hold_piece_canvas: NodeRef,
     next_queue_canvas: NodeRef,
+
+    asset_cache: HashMap<Tetromino, HtmlImageElement>,
 }
+
+const SKIN_NAME: &str = "tetrox";
 
 const LABEL_HEIGHT: usize = 30; // height of "hold" and "next" labels
 const PIECE_HEIGHT: usize = 100; // height of hold/queue piece
@@ -70,7 +77,7 @@ impl BoardModel {
             context.fill_text("hold", 8.0, 24.0).unwrap();
 
             if let Some(kind) = self.field.hold_piece() {
-                Self::draw_piece(kind, &context, SIDE_BAR_WIDTH / 2, LABEL_HEIGHT + PIECE_HEIGHT / 2)
+                self.draw_piece(kind, &context, SIDE_BAR_WIDTH / 2, LABEL_HEIGHT + PIECE_HEIGHT / 2)
             }
         }
     }
@@ -125,7 +132,7 @@ impl BoardModel {
 
             let shadow_piece = self.field.shadow_piece();
             for Coords(row, col) in shadow_piece.coords() {
-                Self::draw_square(
+                self.draw_square(
                     &shadow_piece.kind(),
                     &context,
                     *row as usize * SQUARE_MUL,
@@ -137,7 +144,7 @@ impl BoardModel {
             for (row, line) in self.field.lines().iter().enumerate() {
                 for (col, square) in line.squares().iter().enumerate() {
                     if let Square::Filled(kind) = square {
-                        Self::draw_square(kind, &context, row * SQUARE_MUL, col * SQUARE_MUL);
+                        self.draw_square(kind, &context, row * SQUARE_MUL, col * SQUARE_MUL);
                     }
                 }
             }
@@ -170,8 +177,9 @@ impl BoardModel {
             context.set_font("18px 'IBM Plex Sans'");
             context.fill_text("next", 8.0, 24.0).unwrap();
 
-            for (nth, kind) in self.bag.peek().take(self.field.queue_len()).enumerate() {
-                Self::draw_piece(
+            let queue = self.bag.peek().take(self.field.queue_len()).cloned().collect::<Vec<_>>();
+            for (nth, kind) in queue.iter().enumerate() {
+                self.draw_piece(
                     *kind,
                     &context,
                     SIDE_BAR_WIDTH / 2,
@@ -188,7 +196,7 @@ impl BoardModel {
         true
     }
 
-    fn draw_piece(kind: Tetromino, context: &CanvasRenderingContext2d, x_offset: usize, y_offset: usize) {
+    fn draw_piece(&self, kind: Tetromino, context: &CanvasRenderingContext2d, x_offset: usize, y_offset: usize) {
         let base_coords = kind
             .spawn_offsets()
             .into_iter()
@@ -201,20 +209,15 @@ impl BoardModel {
             .map(|c| c + offset);
 
         for Coords(row, col) in final_coords {
-            Self::draw_square(&kind, context, row as usize, col as usize);
+            self.draw_square(&kind, context, row as usize, col as usize);
         }
     }
 
     // draw a square at the given coords on a canvas
-    fn draw_square(kind: &Tetromino, context: &CanvasRenderingContext2d, row: usize, col: usize) {
-        let field_square_mul = SQUARE_MUL as u32;
-        let image_elem = HtmlImageElement::new_with_width_and_height(field_square_mul, field_square_mul).unwrap();
-        let asset_src = format!("assets/{}.png", kind.asset_name());
-        image_elem.set_src(&asset_src);
-
+    fn draw_square(&self, kind: &Tetromino, context: &CanvasRenderingContext2d, row: usize, col: usize) {
         context
             .draw_image_with_html_image_element_and_dw_and_dh(
-                &image_elem,
+                &self.asset_cache.get(kind).unwrap(),
                 col as f64,
                 row as f64,
                 SQUARE_MUL as f64,
@@ -239,6 +242,18 @@ impl BoardModel {
             .map(|c| c - offset - Coords(SQUARE_MUL as i32 / 2, SQUARE_MUL as i32 / 2))
             .collect()
     }
+
+    fn populate_asset_cache() -> HashMap<Tetromino, HtmlImageElement> {
+        Tetromino::iter()
+            .map(|kind| {
+                let field_square_mul = SQUARE_MUL as u32;
+                let image = HtmlImageElement::new_with_width_and_height(field_square_mul, field_square_mul).unwrap();
+                let asset_src = format!("assets/skins/{}/{}.png", SKIN_NAME, kind.asset_name());
+                image.set_src(&asset_src);
+                (kind, image)
+            })
+            .collect()
+    }
 }
 
 impl Component for BoardModel {
@@ -256,16 +271,17 @@ impl Component for BoardModel {
             field_canvas: NodeRef::default(),
             hold_piece_canvas: NodeRef::default(),
             next_queue_canvas: NodeRef::default(),
+            asset_cache: Self::populate_asset_cache(),
         }
     }
 
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
-            BoardMessage::KeyPressed(e) => match &e.key()[..] {
-                "ArrowLeft" => self.input_states.left_pressed(ctx),
-                "ArrowRight" => self.input_states.right_pressed(ctx),
-                "ArrowDown" => self.input_states.soft_drop_pressed(ctx),
-                "ArrowUp" => self
+            BoardMessage::KeyPressed(e) => match &e.key().to_lowercase()[..] {
+                "arrowleft" => self.input_states.left_pressed(ctx),
+                "arrowright" => self.input_states.right_pressed(ctx),
+                "arrowdown" => self.input_states.soft_drop_pressed(ctx),
+                "arrowup" => self
                     .input_states
                     .set_pressed_with_action(Input::RotateCw, || self.field.try_rotate_cw(&SrsKickTable)),
                 "s" => self
@@ -281,11 +297,11 @@ impl Component for BoardModel {
                 "`" => self.reset(),
                 _ => return false,
             },
-            BoardMessage::KeyReleased(e) => match &e.key()[..] {
-                "ArrowLeft" => self.input_states.left_released(),
-                "ArrowRight" => self.input_states.right_released(),
-                "ArrowDown" => self.input_states.soft_drop_released(),
-                "ArrowUp" => self.input_states.set_released(Input::RotateCw),
+            BoardMessage::KeyReleased(e) => match &e.key().to_lowercase()[..] {
+                "arrowleft" => self.input_states.left_released(),
+                "arrowright" => self.input_states.right_released(),
+                "arrowdown" => self.input_states.soft_drop_released(),
+                "arrowup" => self.input_states.set_released(Input::RotateCw),
                 "s" => self.input_states.set_released(Input::RotateCcw),
                 "a" => self.input_states.set_released(Input::Rotate180),
                 " " => self.input_states.set_released(Input::HardDrop),

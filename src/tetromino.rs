@@ -6,7 +6,7 @@ use strum_macros::EnumIter;
 
 use crate::{Bag, Coords, CoordsFloat, KickTable, KickTable180, PieceKind, RotationState};
 
-#[derive(Copy, Clone, Debug, EnumIter)]
+#[derive(Copy, Clone, Debug, EnumIter, PartialEq, Eq, Hash)]
 pub enum Tetromino {
     S,
     Z,
