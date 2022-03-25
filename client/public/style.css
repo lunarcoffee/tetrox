@@ -4,6 +4,17 @@ body {
     background-attachment: fixed;
 }
 
+.loading-text {
+    color: white;
+
+    font-size: 3em;
+    font-family: "IBM Plex Sans";
+    font-weight: bold;
+
+    text-align: center;
+    margin-top: 48vh;
+}
+
 .game {
     justify-content: center;
 

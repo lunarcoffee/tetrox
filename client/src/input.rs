@@ -8,7 +8,7 @@ use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use yew::{html::Scope, Context};
 
-use crate::{BoardMessage, BoardModel};
+use crate::board::{BoardMessage, Board};
 
 // timeout for das, intervals for arr and soft dropping
 enum MoveTimer {
@@ -98,7 +98,7 @@ impl InputStates {
     }
 
     // wait for das if the left input isn't already pressed
-    pub fn left_pressed(&mut self, ctx: &Context<BoardModel>) -> bool {
+    pub fn left_pressed(&mut self, ctx: &Context<Board>) -> bool {
         let left_down = self.is_pressed(Input::Left);
         if !left_down {
             self.set_pressed(Input::Left);
@@ -114,7 +114,7 @@ impl InputStates {
         !left_down
     }
 
-    pub fn right_pressed(&mut self, ctx: &Context<BoardModel>) -> bool {
+    pub fn right_pressed(&mut self, ctx: &Context<Board>) -> bool {
         let right_down = self.is_pressed(Input::Right);
         if !right_down {
             self.set_pressed(Input::Right);
@@ -131,7 +131,7 @@ impl InputStates {
     }
 
     // keep shifting down while the soft drop input is pressed
-    pub fn soft_drop_pressed(&mut self, ctx: &Context<BoardModel>) -> bool {
+    pub fn soft_drop_pressed(&mut self, ctx: &Context<Board>) -> bool {
         let soft_drop_down = self.is_pressed(Input::SoftDrop);
         if !soft_drop_down {
             self.set_pressed(Input::SoftDrop);
@@ -149,7 +149,7 @@ impl InputStates {
     }
 
     // keep shifting left while the left input is pressed
-    pub fn left_held(&mut self, ctx: &Context<BoardModel>) -> bool {
+    pub fn left_held(&mut self, ctx: &Context<Board>) -> bool {
         let states = self.states.clone();
         let link = ctx.link().clone();
         let action = move || {
@@ -165,7 +165,7 @@ impl InputStates {
         false
     }
 
-    pub fn right_held(&mut self, ctx: &Context<BoardModel>) -> bool {
+    pub fn right_held(&mut self, ctx: &Context<Board>) -> bool {
         let states = self.states.clone();
         let link = ctx.link().clone();
         let action = move || {
@@ -183,7 +183,7 @@ impl InputStates {
 
     // send a message (probably movement) to the board with special behavior for zero (e.g. das, arr, etc.)
     fn send_message_or_if_zero(
-        link: &Scope<BoardModel>,
+        link: &Scope<Board>,
         value: u32,
         message_nonzero: BoardMessage,
         message_zero: BoardMessage,
