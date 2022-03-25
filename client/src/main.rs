@@ -177,7 +177,13 @@ impl BoardModel {
             context.set_font("18px 'IBM Plex Sans'");
             context.fill_text("next", 8.0, 24.0).unwrap();
 
-            let queue = self.bag.peek().take(self.field.queue_len()).cloned().collect::<Vec<_>>();
+            let queue = self
+                .bag
+                .peek()
+                .take(self.field.queue_len())
+                .cloned()
+                .collect::<Vec<_>>();
+
             for (nth, kind) in queue.iter().enumerate() {
                 self.draw_piece(
                     *kind,
@@ -297,48 +303,44 @@ impl Component for BoardModel {
                 "`" => self.reset(),
                 _ => return false,
             },
-            BoardMessage::KeyReleased(e) => match &e.key().to_lowercase()[..] {
-                "arrowleft" => self.input_states.left_released(),
-                "arrowright" => self.input_states.right_released(),
-                "arrowdown" => self.input_states.soft_drop_released(),
-                "arrowup" => self.input_states.set_released(Input::RotateCw),
-                "s" => self.input_states.set_released(Input::RotateCcw),
-                "a" => self.input_states.set_released(Input::Rotate180),
-                " " => self.input_states.set_released(Input::HardDrop),
+            BoardMessage::KeyReleased(e) => self.input_states.set_released(match &e.key().to_lowercase()[..] {
+                "arrowleft" => Input::Left,
+                "arrowright" => Input::Right,
+                "arrowdown" => Input::SoftDrop,
+                "arrowup" => Input::RotateCw,
+                "s" => Input::RotateCcw,
+                "a" => Input::Rotate180,
+                " " => Input::HardDrop,
                 _ => return false,
-            },
+            }),
             BoardMessage::MoveLeft => {
-                if !self.input_states.is_pressed(Input::Right) {
-                    self.field.try_shift(0, -1)
-                } else {
-                    false
+                if self.input_states.is_pressed(Input::Right) {
+                    self.input_states.set_suppressed(Input::Right);
                 }
+                self.field.try_shift(0, -1)
             }
             BoardMessage::MoveRight => {
-                if !self.input_states.is_pressed(Input::Left) {
-                    self.field.try_shift(0, 1)
-                } else {
-                    false
+                if self.input_states.is_pressed(Input::Left) {
+                    self.input_states.set_suppressed(Input::Left);
                 }
+                self.field.try_shift(0, 1)
             }
             BoardMessage::MoveDown => self.field.try_shift(1, 0),
             BoardMessage::MoveLeftAutoRepeat => self.input_states.left_held(ctx),
             BoardMessage::MoveRightAutoRepeat => self.input_states.right_held(ctx),
             BoardMessage::DasLeft => {
-                if !self.input_states.is_pressed(Input::Right) {
-                    while self.field.try_shift(0, -1) {}
-                    true
-                } else {
-                    false
+                if self.input_states.is_pressed(Input::Right) {
+                    self.input_states.set_suppressed(Input::Right);
                 }
+                while self.field.try_shift(0, -1) {}
+                true
             }
             BoardMessage::DasRight => {
-                if !self.input_states.is_pressed(Input::Left) {
-                    while self.field.try_shift(0, 1) {}
-                    true
-                } else {
-                    false
+                if self.input_states.is_pressed(Input::Left) {
+                    self.input_states.set_suppressed(Input::Left);
                 }
+                while self.field.try_shift(0, 1) {}
+                true
             }
             BoardMessage::ProjectDown => self.field.project_down(),
         };

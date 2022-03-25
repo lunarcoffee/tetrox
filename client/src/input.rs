@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
 use gloo_timers::callback::{Interval, Timeout};
 use strum::IntoEnumIterator;
@@ -6,14 +9,6 @@ use strum_macros::EnumIter;
 use yew::{html::Scope, Context};
 
 use crate::{BoardMessage, BoardModel};
-
-// used to determine what timers to cancel when movement keys are released
-#[derive(PartialEq, Eq)]
-enum MoveDirection {
-    Left,
-    Right,
-    Down,
-}
 
 // timeout for das, intervals for arr and soft dropping
 enum MoveTimer {
@@ -32,10 +27,19 @@ pub enum Input {
     Rotate180,
 }
 
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum InputState {
+    Released,
+    Pressed,
+    // other input of pair (e.g. left and right) pressed while the other is already pressed
+    // allows the latest input to take precedence
+    Suppressed,
+}
+
 // states (pressed/released) of all inputs
 pub struct InputStates {
-    pressed: HashMap<Input, bool>,
-    timers: Vec<(MoveDirection, MoveTimer)>,
+    states: Arc<Mutex<HashMap<Input, InputState>>>,
+    timers: Vec<(Input, MoveTimer)>,
 }
 
 // das, arr, sdr in milliseconds
@@ -45,15 +49,22 @@ pub const SOFT_DROP_RATE: u32 = 0;
 
 impl InputStates {
     pub fn new() -> Self {
-        InputStates {
-            pressed: Input::iter().map(|input| (input, false)).collect(),
-            timers: vec![],
-        }
+        let map = Input::iter().map(|input| (input, InputState::Released)).collect();
+        let states = Arc::new(Mutex::new(map));
+        InputStates { states, timers: vec![] }
     }
 
-    pub fn is_pressed(&self, input: Input) -> bool { *self.pressed.get(&input).unwrap() }
+    fn get_state(&mut self, input: Input) -> InputState { *self.states.clone().lock().unwrap().get(&input).unwrap() }
 
-    fn set_pressed(&mut self, input: Input) { self.pressed.insert(input, true); }
+    fn set_state(&mut self, input: Input, state: InputState) {
+        self.states.clone().lock().unwrap().insert(input, state);
+    }
+    
+    pub fn is_pressed(&self, input: Input) -> bool {
+        self.states.clone().lock().unwrap().get(&input).unwrap() == &InputState::Pressed
+    }
+
+    fn set_pressed(&mut self, input: Input) { self.set_state(input, InputState::Pressed); }
 
     // this acts as a guard to make sure repeated inputs don't trigger additional actions once an input is pressed
     pub fn set_pressed_with_action(&mut self, input: Input, action: impl FnOnce() -> bool) -> bool {
@@ -66,9 +77,23 @@ impl InputStates {
         }
     }
 
-    // this unsets the guard, re-enabling the action
+    // this unsets the guard, cancelling any active timers and re-enabling the action
     pub fn set_released(&mut self, input: Input) -> bool {
-        self.pressed.insert(input, false);
+        // if left or right, unsuppress the other
+        if let Some(other) = Self::other_in_lr_pair(input) {
+            if self.get_state(other) == InputState::Suppressed {
+                self.set_pressed(other);
+            }
+        }
+
+        self.set_state(input, InputState::Released);
+        self.timers.retain(|t| t.0 != input);
+        false
+    }
+
+    // this will cause the suppressed held input to stop repeating until set to pressed or released
+    pub fn set_suppressed(&mut self, input: Input) -> bool {
+        self.set_state(input, InputState::Suppressed);
         false
     }
 
@@ -84,7 +109,7 @@ impl InputStates {
             let timeout = Timeout::new(DELAYED_AUTO_SHIFT, move || {
                 link.send_message(BoardMessage::MoveLeftAutoRepeat);
             });
-            self.timers.push((MoveDirection::Left, MoveTimer::Timeout(timeout)));
+            self.timers.push((Input::Left, MoveTimer::Timeout(timeout)));
         }
         !left_down
     }
@@ -100,7 +125,7 @@ impl InputStates {
             let timeout = Timeout::new(DELAYED_AUTO_SHIFT, move || {
                 link.send_message(BoardMessage::MoveRightAutoRepeat);
             });
-            self.timers.push((MoveDirection::Right, MoveTimer::Timeout(timeout)));
+            self.timers.push((Input::Right, MoveTimer::Timeout(timeout)));
         }
         !right_down
     }
@@ -112,79 +137,70 @@ impl InputStates {
             self.set_pressed(Input::SoftDrop);
 
             let link = ctx.link().clone();
-            Self::send_soft_drop_move_message(&link);
+            let action = move || {
+                Self::send_message_or_if_zero(&link, SOFT_DROP_RATE, BoardMessage::ProjectDown, BoardMessage::MoveDown)
+            };
+            action();
 
-            let interval = Interval::new(SOFT_DROP_RATE, move || Self::send_soft_drop_move_message(&link));
-            self.timers.push((MoveDirection::Down, MoveTimer::Interval(interval)));
+            let interval = Interval::new(SOFT_DROP_RATE, action);
+            self.timers.push((Input::SoftDrop, MoveTimer::Interval(interval)));
         }
         !soft_drop_down
     }
 
     // keep shifting left while the left input is pressed
     pub fn left_held(&mut self, ctx: &Context<BoardModel>) -> bool {
+        let states = self.states.clone();
         let link = ctx.link().clone();
-        Self::send_left_hold_move_message(&link);
+        let action = move || {
+            if states.lock().unwrap().get(&Input::Left).unwrap() == &InputState::Pressed {
+                Self::send_message_or_if_zero(&link, AUTO_REPEAT_RATE, BoardMessage::DasLeft, BoardMessage::MoveLeft)
+            }
+        };
+        action();
 
-        let interval = Interval::new(AUTO_REPEAT_RATE, move || Self::send_left_hold_move_message(&link));
-        self.timers.push((MoveDirection::Left, MoveTimer::Interval(interval)));
+        let interval = Interval::new(AUTO_REPEAT_RATE, action);
+        self.timers.push((Input::Left, MoveTimer::Interval(interval)));
 
         false
     }
 
     pub fn right_held(&mut self, ctx: &Context<BoardModel>) -> bool {
+        let states = self.states.clone();
         let link = ctx.link().clone();
-        Self::send_right_hold_move_message(&link);
+        let action = move || {
+            if states.lock().unwrap().get(&Input::Right).unwrap() == &InputState::Pressed {
+                Self::send_message_or_if_zero(&link, AUTO_REPEAT_RATE, BoardMessage::DasRight, BoardMessage::MoveRight)
+            }
+        };
+        action();
 
-        let interval = Interval::new(AUTO_REPEAT_RATE, move || Self::send_right_hold_move_message(&link));
-        self.timers.push((MoveDirection::Right, MoveTimer::Interval(interval)));
-
-        false
-    }
-
-    // cancel all timers contingent on left being pressed
-    pub fn left_released(&mut self) -> bool {
-        self.set_released(Input::Left);
-        self.timers.retain(|t| !matches!(t, (MoveDirection::Left, ..)));
+        let interval = Interval::new(AUTO_REPEAT_RATE, action);
+        self.timers.push((Input::Right, MoveTimer::Interval(interval)));
 
         false
     }
 
-    pub fn right_released(&mut self) -> bool {
-        self.set_released(Input::Right);
-        self.timers.retain(|t| !matches!(t, (MoveDirection::Right, ..)));
-
-        false
-    }
-
-    pub fn soft_drop_released(&mut self) -> bool {
-        self.set_released(Input::SoftDrop);
-        self.timers.retain(|t| !matches!(t, (MoveDirection::Down, ..)));
-        false
-    }
-
-    // move or project the piece down based on the sdr
-    pub fn send_soft_drop_move_message(link: &Scope<BoardModel>) {
-        if SOFT_DROP_RATE == 0 {
-            link.send_message(BoardMessage::ProjectDown);
+    // send a message (probably movement) to the board with special behavior for zero (e.g. das, arr, etc.)
+    fn send_message_or_if_zero(
+        link: &Scope<BoardModel>,
+        value: u32,
+        message_nonzero: BoardMessage,
+        message_zero: BoardMessage,
+    ) {
+        if value == 0 {
+            link.send_message(message_nonzero);
         } else {
-            link.send_message(BoardMessage::MoveDown);
+            link.send_message(message_zero);
         }
     }
 
-    // move or das the piece left based on the arr
-    pub fn send_left_hold_move_message(link: &Scope<BoardModel>) {
-        if AUTO_REPEAT_RATE == 0 {
-            link.send_message(BoardMessage::DasLeft)
-        } else {
-            link.send_message(BoardMessage::MoveLeft);
-        }
-    }
-
-    pub fn send_right_hold_move_message(link: &Scope<BoardModel>) {
-        if AUTO_REPEAT_RATE == 0 {
-            link.send_message(BoardMessage::DasRight)
-        } else {
-            link.send_message(BoardMessage::MoveRight);
+    // return the other input if the given input is left or right
+    fn other_in_lr_pair(input: Input) -> Option<Input> {
+        match input {
+            Input::Left => Some(Input::Right),
+            Input::Right => Some(Input::Left),
+            _ => None,
         }
     }
 }
