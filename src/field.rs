@@ -190,15 +190,12 @@ impl<P: PieceKind> DefaultField<P> {
 
     pub fn actions_since_lock_delay(&self) -> Option<usize> { self.lock_delay_actions }
 
+    // used to check whether to activate lock delay
     pub fn cur_piece_cannot_move_down(&self) -> bool {
         self.cur_piece.shifted(1, 0).is_blocked(Some(&self.cur_piece), &self)
     }
 
-    pub fn activate_lock_delay(&mut self) {
-        if self.lock_delay_actions.is_none() {
-            self.lock_delay_actions = Some(0);
-        }
-    }
+    pub fn activate_lock_delay(&mut self) { self.lock_delay_actions.get_or_insert(0); }
 
     fn update_lock_delay(&mut self, action: bool) -> bool {
         if action {
@@ -308,8 +305,8 @@ impl<P: PieceKind> DefaultField<P> {
             .map(|l| l.clone())
             .collect::<Vec<_>>();
 
-        let cleared_range = 0..self.height - uncleared_lines.len();
-        self.lines = cleared_range.map(|_| Line::new(self.width)).collect();
+        let n_cleared = self.height - uncleared_lines.len();
+        self.lines = (0..n_cleared).map(|_| Line::new(self.width)).collect();
         self.lines.extend(uncleared_lines);
     }
 

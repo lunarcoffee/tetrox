@@ -25,7 +25,9 @@ pub enum BoardMessage {
     DasLeft,
     DasRight,
     ProjectDown,
+
     HardDrop,
+    LockDelayDrop,
 }
 
 #[derive(Clone, PartialEq, Properties)]
@@ -41,7 +43,7 @@ pub struct BoardTimers {
     lock_delay: Option<Timeout>,
 }
 
-const GRAVITY_DELAY: u32 = 500;
+const GRAVITY_DELAY: u32 = 1_000;
 const LOCK_DELAY: u32 = 500;
 
 impl BoardTimers {
@@ -62,7 +64,7 @@ impl BoardTimers {
     fn reset_lock_delay(&mut self, ctx: &Context<Board>) {
         let link = ctx.link().clone();
         self.lock_delay = Some(Timeout::new(LOCK_DELAY, move || {
-            link.send_message(BoardMessage::HardDrop);
+            link.send_message(BoardMessage::LockDelayDrop);
         }))
     }
 
@@ -86,8 +88,6 @@ pub struct Board {
 pub const SQUARE_MUL: usize = 32; // the size of each square on the field
 
 pub const LABEL_HEIGHT: usize = 30; // height of "hold" and "next" labels
-
-// TODO: square times max height
 pub const PIECE_HEIGHT: usize = SQUARE_MUL * 2 + 36; // height of hold/queue piece
 
 pub const SIDE_BAR_WIDTH: usize = 170; // width of hold/queue panels
@@ -409,6 +409,14 @@ impl Component for Board {
                 self.timers.cancel_lock_delay();
                 self.prev_lock_delay_actions = 0;
                 self.field.hard_drop(&mut self.bag)
+            }
+            // only lock if the piece is still touching the stack
+            BoardMessage::LockDelayDrop => {
+                if self.field.cur_piece_cannot_move_down() {
+                    to_true(ctx.link().send_message(BoardMessage::HardDrop))
+                } else {
+                    false
+                }
             }
         };
 
