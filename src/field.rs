@@ -132,18 +132,10 @@ pub struct DefaultField<P: PieceKind> {
     piece_origin: Coords,
 
     lock_delay_actions: Option<usize>,
-    lock_delay_limit: usize,
 }
 
 impl<P: PieceKind> DefaultField<P> {
-    pub fn new(
-        width: usize,
-        height: usize,
-        hidden: usize,
-        queue_len: usize,
-        lock_delay_limit: usize,
-        bag: &mut impl Bag<P>,
-    ) -> Self {
+    pub fn new(width: usize, height: usize, hidden: usize, queue_len: usize, bag: &mut impl Bag<P>) -> Self {
         // coordinates of the center (left-aligned) of the bottom-most line of pieces spawned on this field
         // i.e. the coordinates of the @ sign in the following 10-wide field:
         // |    #     |
@@ -165,7 +157,6 @@ impl<P: PieceKind> DefaultField<P> {
             piece_origin,
 
             lock_delay_actions: None,
-            lock_delay_limit,
         };
         field.draw_cur_piece();
         field
@@ -197,8 +188,10 @@ impl<P: PieceKind> DefaultField<P> {
 
     pub fn shadow_piece(&self) -> LivePiece<P> { self.cur_piece.projected_down(&self) }
 
+    pub fn actions_since_lock_delay(&self) -> Option<usize> { self.lock_delay_actions }
+
     pub fn cur_piece_cannot_move_down(&self) -> bool {
-        self.cur_piece.shifted(0, 1).is_blocked(Some(&self.cur_piece), &self)
+        self.cur_piece.shifted(1, 0).is_blocked(Some(&self.cur_piece), &self)
     }
 
     pub fn activate_lock_delay(&mut self) {
@@ -207,37 +200,40 @@ impl<P: PieceKind> DefaultField<P> {
         }
     }
 
-    fn update_lock_delay(&mut self, bag: &mut impl Bag<P>) {
-        if let Some(ref mut n_actions) = self.lock_delay_actions {
-            if n_actions == &self.lock_delay_limit {
-                self.hard_drop(bag);
-            } else {
+    fn update_lock_delay(&mut self, action: bool) -> bool {
+        if action {
+            if let Some(ref mut n_actions) = self.lock_delay_actions {
                 *n_actions += 1;
             }
         }
+        action
     }
 
     // move the current piece to a different position (fails if blocked)
     pub fn try_shift(&mut self, rows: i32, cols: i32) -> bool {
-        self.try_update_cur_piece(self.cur_piece.shifted(rows, cols))
+        let action = self.try_update_cur_piece(self.cur_piece.shifted(rows, cols));
+        self.update_lock_delay(action)
     }
 
     pub fn try_rotate_cw(&mut self, kick_table: &impl KickTable<P>) -> bool {
         let kicks = kick_table.rotate_cw(self.cur_piece.kind(), self.cur_piece.rotation_state());
         let rotated = self.cur_piece.rotated_cw();
-        self.try_rotate_with_kicks(kicks, rotated)
+        let action = self.try_rotate_with_kicks(kicks, rotated);
+        self.update_lock_delay(action)
     }
 
     pub fn try_rotate_ccw(&mut self, kick_table: &impl KickTable<P>) -> bool {
         let kicks = kick_table.rotate_ccw(self.cur_piece.kind(), self.cur_piece.rotation_state());
         let rotated = self.cur_piece.rotated_ccw();
-        self.try_rotate_with_kicks(kicks, rotated)
+        let action = self.try_rotate_with_kicks(kicks, rotated);
+        self.update_lock_delay(action)
     }
 
     pub fn try_rotate_180(&mut self, kick_table: &impl KickTable180<P>) -> bool {
         let kicks = kick_table.rotate_180(self.cur_piece.kind(), self.cur_piece.rotation_state());
         let rotated = self.cur_piece.rotated_180();
-        self.try_rotate_with_kicks(kicks, rotated)
+        let action = self.try_rotate_with_kicks(kicks, rotated);
+        self.update_lock_delay(action)
     }
 
     // tries kicks on a rotated piece, swapping with the current piece if one fits

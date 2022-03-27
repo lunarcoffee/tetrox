@@ -25,12 +25,16 @@ pub enum BoardMessage {
     DasLeft,
     DasRight,
     ProjectDown,
+    HardDrop,
 }
 
 pub struct BoardTimers {
     gravity: Option<Interval>,
     lock_delay: Option<Timeout>,
 }
+
+const GRAVITY_DELAY: u32 = 500;
+const LOCK_DELAY: u32 = 500;
 
 impl BoardTimers {
     pub fn new() -> Self {
@@ -39,6 +43,22 @@ impl BoardTimers {
             lock_delay: None,
         }
     }
+
+    fn reset_gravity(&mut self, ctx: &Context<Board>) {
+        let link = ctx.link().clone();
+        self.gravity = Some(Interval::new(GRAVITY_DELAY, move || {
+            link.send_message(BoardMessage::MoveDown);
+        }));
+    }
+
+    fn reset_lock_delay(&mut self, ctx: &Context<Board>) {
+        let link = ctx.link().clone();
+        self.lock_delay = Some(Timeout::new(LOCK_DELAY, move || {
+            link.send_message(BoardMessage::HardDrop);
+        }))
+    }
+
+    fn cancel_lock_delay(&mut self) { self.lock_delay.take().map(|timer| timer.cancel()); }
 }
 
 pub struct Board {
@@ -52,6 +72,7 @@ pub struct Board {
 
     asset_cache: HashMap<Tetromino, HtmlImageElement>, // cache image assets for performance
     timers: BoardTimers,
+    prev_lock_delay_actions: usize,
 }
 
 pub const LABEL_HEIGHT: usize = 30; // height of "hold" and "next" labels
@@ -207,11 +228,12 @@ impl Board {
         }
     }
 
-    fn reset(&mut self) {
+    fn reset(&mut self, ctx: &Context<Board>) {
         self.bag = SevenBag::new();
-        self.field = DefaultField::new(10, 40, 20, 5, 30, &mut self.bag);
+        self.field = DefaultField::new(10, 40, 20, 5, &mut self.bag);
         self.input_states = InputStates::new();
         self.timers = BoardTimers::new();
+        self.timers.reset_gravity(ctx);
     }
 
     fn draw_piece(&self, kind: Tetromino, context: &CanvasRenderingContext2d, x_offset: usize, y_offset: usize) {
@@ -280,7 +302,7 @@ impl Component for Board {
 
     fn create(_ctx: &Context<Self>) -> Self {
         let mut bag = SevenBag::new();
-        let field = DefaultField::new(10, 40, 20, 5, 30, &mut bag); // TODO: props?
+        let field = DefaultField::new(10, 40, 20, 5, &mut bag); // TODO: props?
 
         Board {
             bag,
@@ -293,6 +315,7 @@ impl Component for Board {
 
             asset_cache: Self::populate_asset_cache(),
             timers: BoardTimers::new(),
+            prev_lock_delay_actions: 0,
         }
     }
 
@@ -313,6 +336,7 @@ impl Component for Board {
         }
 
         let to_true = |_| true;
+        let to_false = |_| false;
 
         // primary input action
         let update = match msg {
@@ -333,15 +357,14 @@ impl Component for Board {
                         .set_pressed_with_action(Input::Rotate180, || self.field.try_rotate_180(&ExtendedSrsKickTable)),
                 ),
                 "d" => self.field.swap_hold_piece(&mut self.bag),
-                " " => to_true(
-                    self.input_states
-                        .set_pressed_with_action(Input::HardDrop, || self.field.hard_drop(&mut self.bag)),
-                ),
-                "`" => to_true(self.reset()),
+                " " => to_true(self.input_states.set_pressed_with_action(Input::HardDrop, || {
+                    to_true(ctx.link().send_message(BoardMessage::HardDrop))
+                })),
+                "`" => to_true(self.reset(ctx)),
                 _ => return false,
             },
             BoardMessage::KeyReleased(ref e) => {
-                to_true(self.input_states.set_released(match &e.key().to_lowercase()[..] {
+                to_false(self.input_states.set_released(match &e.key().to_lowercase()[..] {
                     "arrowleft" => Input::Left,
                     "arrowright" => Input::Right,
                     "arrowdown" => Input::SoftDrop,
@@ -360,7 +383,40 @@ impl Component for Board {
             BoardMessage::MoveLeftAutoRepeat => to_true(self.input_states.left_held(ctx)),
             BoardMessage::MoveRightAutoRepeat => to_true(self.input_states.right_held(ctx)),
             BoardMessage::ProjectDown => self.field.project_down(),
+            BoardMessage::HardDrop => {
+                self.timers.reset_gravity(ctx);
+                self.timers.cancel_lock_delay();
+                self.prev_lock_delay_actions = 0;
+                self.field.hard_drop(&mut self.bag)
+            }
         };
+
+        // activate lock delay after the piece touches the stack while falling
+        match msg {
+            BoardMessage::MoveLeft | BoardMessage::MoveRight | BoardMessage::MoveDown | BoardMessage::ProjectDown => {
+                if self.field.cur_piece_cannot_move_down() {
+                    // only reset the lock delay the first time the piece touches the stack
+                    if self.field.actions_since_lock_delay().is_none() {
+                        self.timers.reset_lock_delay(ctx);
+                    }
+                    self.field.activate_lock_delay();
+                }
+            }
+            _ => {}
+        }
+
+        if let Some(n_actions_now) = self.field.actions_since_lock_delay() {
+            // reset the lock delay if a lock delay resetting action occurred (e.g. successful movement)
+            if n_actions_now > self.prev_lock_delay_actions {
+                self.timers.reset_lock_delay(ctx);
+                self.prev_lock_delay_actions = n_actions_now;
+
+                // cap how many such actions can occur
+                if n_actions_now == 30 {
+                    ctx.link().send_message(BoardMessage::HardDrop);
+                }
+            }
+        }
 
         update
     }
@@ -404,7 +460,10 @@ impl Component for Board {
         }
     }
 
-    fn rendered(&mut self, _ctx: &Context<Self>, first_render: bool) {
+    fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {
+        if first_render {
+            self.timers.reset_gravity(ctx);
+        }
         self.draw_hold_piece();
         self.draw_field(first_render);
         self.draw_next_queue();
