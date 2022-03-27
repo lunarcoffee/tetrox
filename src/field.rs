@@ -130,10 +130,20 @@ pub struct DefaultField<P: PieceKind> {
     hold_piece: Option<P>,
     hold_swapped: bool,
     piece_origin: Coords,
+
+    lock_delay_actions: Option<usize>,
+    lock_delay_limit: usize,
 }
 
 impl<P: PieceKind> DefaultField<P> {
-    pub fn new(width: usize, height: usize, hidden: usize, queue_len: usize, bag: &mut impl Bag<P>) -> Self {
+    pub fn new(
+        width: usize,
+        height: usize,
+        hidden: usize,
+        queue_len: usize,
+        lock_delay_limit: usize,
+        bag: &mut impl Bag<P>,
+    ) -> Self {
         // coordinates of the center (left-aligned) of the bottom-most line of pieces spawned on this field
         // i.e. the coordinates of the @ sign in the following 10-wide field:
         // |    #     |
@@ -146,11 +156,16 @@ impl<P: PieceKind> DefaultField<P> {
             height,
             hidden,
             queue_len,
+
             lines: (0..height).map(|_| Line::new(width)).collect(),
+
             cur_piece: LivePiece::new(bag.next(), &piece_origin),
             hold_piece: None,
             hold_swapped: false,
             piece_origin,
+
+            lock_delay_actions: None,
+            lock_delay_limit,
         };
         field.draw_cur_piece();
         field
@@ -181,6 +196,26 @@ impl<P: PieceKind> DefaultField<P> {
     pub fn hold_piece(&self) -> Option<P> { self.hold_piece }
 
     pub fn shadow_piece(&self) -> LivePiece<P> { self.cur_piece.projected_down(&self) }
+
+    pub fn cur_piece_cannot_move_down(&self) -> bool {
+        self.cur_piece.shifted(0, 1).is_blocked(Some(&self.cur_piece), &self)
+    }
+
+    pub fn activate_lock_delay(&mut self) {
+        if self.lock_delay_actions.is_none() {
+            self.lock_delay_actions = Some(0);
+        }
+    }
+
+    fn update_lock_delay(&mut self, bag: &mut impl Bag<P>) {
+        if let Some(ref mut n_actions) = self.lock_delay_actions {
+            if n_actions == &self.lock_delay_limit {
+                self.hard_drop(bag);
+            } else {
+                *n_actions += 1;
+            }
+        }
+    }
 
     // move the current piece to a different position (fails if blocked)
     pub fn try_shift(&mut self, rows: i32, cols: i32) -> bool {
@@ -240,7 +275,9 @@ impl<P: PieceKind> DefaultField<P> {
         if self.hold_swapped {
             false
         } else {
+            self.lock_delay_actions = None;
             self.hold_swapped = true;
+
             let hold_kind = self.hold_piece;
             self.hold_piece = Some(self.cur_piece.kind());
 
@@ -259,7 +296,9 @@ impl<P: PieceKind> DefaultField<P> {
     }
 
     pub fn hard_drop(&mut self, bag: &mut impl Bag<P>) -> bool {
+        self.lock_delay_actions = None;
         self.hold_swapped = false;
+
         self.project_down();
         self.clear_lines();
         self.try_spawn_no_erase(bag)

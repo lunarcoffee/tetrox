@@ -67,18 +67,16 @@ impl InputStates {
     fn set_pressed(&mut self, input: Input) { self.set_state(input, InputState::Pressed); }
 
     // this acts as a guard to make sure repeated inputs don't trigger additional actions once an input is pressed
-    pub fn set_pressed_with_action(&mut self, input: Input, action: impl FnOnce() -> bool) -> bool {
+    pub fn set_pressed_with_action(&mut self, input: Input, action: impl FnOnce() -> bool) {
         let input_down = self.is_pressed(input);
         if !input_down {
             self.set_pressed(input);
-            action()
-        } else {
-            false
+            action();
         }
     }
 
     // this unsets the guard, cancelling any active timers and re-enabling the action
-    pub fn set_released(&mut self, input: Input) -> bool {
+    pub fn set_released(&mut self, input: Input) {
         // if left or right, unsuppress the other
         if let Some(other) = Self::other_in_lr_pair(input) {
             if self.get_state(other) == InputState::Suppressed {
@@ -88,17 +86,15 @@ impl InputStates {
 
         self.set_state(input, InputState::Released);
         self.timers.retain(|t| t.0 != input);
-        false
     }
 
     // this will cause the suppressed held input to stop repeating until set to pressed or released
-    pub fn set_suppressed(&mut self, input: Input) -> bool {
+    pub fn set_suppressed(&mut self, input: Input) {
         self.set_state(input, InputState::Suppressed);
-        false
     }
 
     // wait for das if the left input isn't already pressed
-    pub fn left_pressed(&mut self, ctx: &Context<Board>) -> bool {
+    pub fn left_pressed(&mut self, ctx: &Context<Board>) {
         let left_down = self.is_pressed(Input::Left);
         if !left_down {
             self.set_pressed(Input::Left);
@@ -111,10 +107,9 @@ impl InputStates {
             });
             self.timers.push((Input::Left, MoveTimer::Timeout(timeout)));
         }
-        !left_down
     }
 
-    pub fn right_pressed(&mut self, ctx: &Context<Board>) -> bool {
+    pub fn right_pressed(&mut self, ctx: &Context<Board>) {
         let right_down = self.is_pressed(Input::Right);
         if !right_down {
             self.set_pressed(Input::Right);
@@ -127,11 +122,10 @@ impl InputStates {
             });
             self.timers.push((Input::Right, MoveTimer::Timeout(timeout)));
         }
-        !right_down
     }
 
     // keep shifting down while the soft drop input is pressed
-    pub fn soft_drop_pressed(&mut self, ctx: &Context<Board>) -> bool {
+    pub fn soft_drop_pressed(&mut self, ctx: &Context<Board>) {
         let soft_drop_down = self.is_pressed(Input::SoftDrop);
         if !soft_drop_down {
             self.set_pressed(Input::SoftDrop);
@@ -145,11 +139,10 @@ impl InputStates {
             let interval = Interval::new(SOFT_DROP_RATE, action);
             self.timers.push((Input::SoftDrop, MoveTimer::Interval(interval)));
         }
-        !soft_drop_down
     }
 
     // keep shifting left while the left input is pressed
-    pub fn left_held(&mut self, ctx: &Context<Board>) -> bool {
+    pub fn left_held(&mut self, ctx: &Context<Board>) {
         let states = self.states.clone();
         let link = ctx.link().clone();
         let action = move || {
@@ -161,11 +154,9 @@ impl InputStates {
 
         let interval = Interval::new(AUTO_REPEAT_RATE, action);
         self.timers.push((Input::Left, MoveTimer::Interval(interval)));
-
-        false
     }
 
-    pub fn right_held(&mut self, ctx: &Context<Board>) -> bool {
+    pub fn right_held(&mut self, ctx: &Context<Board>) {
         let states = self.states.clone();
         let link = ctx.link().clone();
         let action = move || {
@@ -177,8 +168,6 @@ impl InputStates {
 
         let interval = Interval::new(AUTO_REPEAT_RATE, action);
         self.timers.push((Input::Right, MoveTimer::Interval(interval)));
-
-        false
     }
 
     // send a message (probably movement) to the board with special behavior for zero (e.g. das, arr, etc.)

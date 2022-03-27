@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::input::{Input, InputStates};
+use gloo_timers::callback::{Interval, Timeout};
 use strum::IntoEnumIterator;
 use tetrox::{
     field::{DefaultField, Square},
@@ -26,6 +27,20 @@ pub enum BoardMessage {
     ProjectDown,
 }
 
+pub struct BoardTimers {
+    gravity: Option<Interval>,
+    lock_delay: Option<Timeout>,
+}
+
+impl BoardTimers {
+    pub fn new() -> Self {
+        BoardTimers {
+            gravity: None,
+            lock_delay: None,
+        }
+    }
+}
+
 pub struct Board {
     bag: SevenBag,
     field: DefaultField<Tetromino>,
@@ -35,13 +50,16 @@ pub struct Board {
     hold_piece_canvas: NodeRef,
     next_queue_canvas: NodeRef,
 
-    asset_cache: HashMap<Tetromino, HtmlImageElement>,
+    asset_cache: HashMap<Tetromino, HtmlImageElement>, // cache image assets for performance
+    timers: BoardTimers,
 }
 
 pub const LABEL_HEIGHT: usize = 30; // height of "hold" and "next" labels
 pub const PIECE_HEIGHT: usize = 100; // height of hold/queue piece
+
 pub const SIDE_BAR_WIDTH: usize = 170; // width of hold/queue panels
 pub const SIDE_BAR_PADDING: usize = 6; // bottom padding of hold/queue panels
+
 pub const SQUARE_MUL: usize = 32; // the size of each square on the field
 
 impl Board {
@@ -189,11 +207,11 @@ impl Board {
         }
     }
 
-    fn reset(&mut self) -> bool {
+    fn reset(&mut self) {
         self.bag = SevenBag::new();
-        self.field = DefaultField::new(10, 40, 20, 5, &mut self.bag);
+        self.field = DefaultField::new(10, 40, 20, 5, 30, &mut self.bag);
         self.input_states = InputStates::new();
-        true
+        self.timers = BoardTimers::new();
     }
 
     fn draw_piece(&self, kind: Tetromino, context: &CanvasRenderingContext2d, x_offset: usize, y_offset: usize) {
@@ -262,83 +280,89 @@ impl Component for Board {
 
     fn create(_ctx: &Context<Self>) -> Self {
         let mut bag = SevenBag::new();
-        let field = DefaultField::new(10, 40, 20, 5, &mut bag);
+        let field = DefaultField::new(10, 40, 20, 5, 30, &mut bag); // TODO: props?
 
         Board {
             bag,
             field,
             input_states: InputStates::new(),
+
             field_canvas: NodeRef::default(),
             hold_piece_canvas: NodeRef::default(),
             next_queue_canvas: NodeRef::default(),
+
             asset_cache: Self::populate_asset_cache(),
+            timers: BoardTimers::new(),
         }
     }
 
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
+        // handle input suppression first
         match msg {
-            BoardMessage::KeyPressed(e) => match &e.key().to_lowercase()[..] {
-                "arrowleft" => self.input_states.left_pressed(ctx),
-                "arrowright" => self.input_states.right_pressed(ctx),
-                "arrowdown" => self.input_states.soft_drop_pressed(ctx),
-                "arrowup" => self
-                    .input_states
-                    .set_pressed_with_action(Input::RotateCw, || self.field.try_rotate_cw(&SrsKickTable)),
-                "s" => self
-                    .input_states
-                    .set_pressed_with_action(Input::RotateCcw, || self.field.try_rotate_ccw(&SrsKickTable)),
-                "a" => self
-                    .input_states
-                    .set_pressed_with_action(Input::Rotate180, || self.field.try_rotate_180(&ExtendedSrsKickTable)),
+            BoardMessage::MoveRight | BoardMessage::DasRight => {
+                if self.input_states.is_pressed(Input::Left) {
+                    self.input_states.set_suppressed(Input::Left);
+                }
+            }
+            BoardMessage::MoveLeft | BoardMessage::DasLeft => {
+                if self.input_states.is_pressed(Input::Right) {
+                    self.input_states.set_suppressed(Input::Right);
+                }
+            }
+            _ => {}
+        }
+
+        let to_true = |_| true;
+
+        // primary input action
+        let update = match msg {
+            BoardMessage::KeyPressed(ref e) => match &e.key().to_lowercase()[..] {
+                "arrowleft" => to_true(self.input_states.left_pressed(ctx)),
+                "arrowright" => to_true(self.input_states.right_pressed(ctx)),
+                "arrowdown" => to_true(self.input_states.soft_drop_pressed(ctx)),
+                "arrowup" => to_true(
+                    self.input_states
+                        .set_pressed_with_action(Input::RotateCw, || self.field.try_rotate_cw(&SrsKickTable)),
+                ),
+                "s" => to_true(
+                    self.input_states
+                        .set_pressed_with_action(Input::RotateCcw, || self.field.try_rotate_ccw(&SrsKickTable)),
+                ),
+                "a" => to_true(
+                    self.input_states
+                        .set_pressed_with_action(Input::Rotate180, || self.field.try_rotate_180(&ExtendedSrsKickTable)),
+                ),
                 "d" => self.field.swap_hold_piece(&mut self.bag),
-                " " => self
-                    .input_states
-                    .set_pressed_with_action(Input::HardDrop, || self.field.hard_drop(&mut self.bag)),
-                "`" => self.reset(),
+                " " => to_true(
+                    self.input_states
+                        .set_pressed_with_action(Input::HardDrop, || self.field.hard_drop(&mut self.bag)),
+                ),
+                "`" => to_true(self.reset()),
                 _ => return false,
             },
-            BoardMessage::KeyReleased(e) => self.input_states.set_released(match &e.key().to_lowercase()[..] {
-                "arrowleft" => Input::Left,
-                "arrowright" => Input::Right,
-                "arrowdown" => Input::SoftDrop,
-                "arrowup" => Input::RotateCw,
-                "s" => Input::RotateCcw,
-                "a" => Input::Rotate180,
-                " " => Input::HardDrop,
-                _ => return false,
-            }),
-            BoardMessage::MoveLeft => {
-                if self.input_states.is_pressed(Input::Right) {
-                    self.input_states.set_suppressed(Input::Right);
-                }
-                self.field.try_shift(0, -1)
+            BoardMessage::KeyReleased(ref e) => {
+                to_true(self.input_states.set_released(match &e.key().to_lowercase()[..] {
+                    "arrowleft" => Input::Left,
+                    "arrowright" => Input::Right,
+                    "arrowdown" => Input::SoftDrop,
+                    "arrowup" => Input::RotateCw,
+                    "s" => Input::RotateCcw,
+                    "a" => Input::Rotate180,
+                    " " => Input::HardDrop,
+                    _ => return false,
+                }))
             }
-            BoardMessage::MoveRight => {
-                if self.input_states.is_pressed(Input::Left) {
-                    self.input_states.set_suppressed(Input::Left);
-                }
-                self.field.try_shift(0, 1)
-            }
-            BoardMessage::DasLeft => {
-                if self.input_states.is_pressed(Input::Right) {
-                    self.input_states.set_suppressed(Input::Right);
-                }
-                while self.field.try_shift(0, -1) {}
-                true
-            }
-            BoardMessage::DasRight => {
-                if self.input_states.is_pressed(Input::Left) {
-                    self.input_states.set_suppressed(Input::Left);
-                }
-                while self.field.try_shift(0, 1) {}
-                true
-            }
+            BoardMessage::MoveLeft => self.field.try_shift(0, -1),
+            BoardMessage::MoveRight => self.field.try_shift(0, 1),
+            BoardMessage::DasLeft => to_true(while self.field.try_shift(0, -1) {}),
+            BoardMessage::DasRight => to_true(while self.field.try_shift(0, 1) {}),
             BoardMessage::MoveDown => self.field.try_shift(1, 0),
-            BoardMessage::MoveLeftAutoRepeat => self.input_states.left_held(ctx),
-            BoardMessage::MoveRightAutoRepeat => self.input_states.right_held(ctx),
+            BoardMessage::MoveLeftAutoRepeat => to_true(self.input_states.left_held(ctx)),
+            BoardMessage::MoveRightAutoRepeat => to_true(self.input_states.right_held(ctx)),
             BoardMessage::ProjectDown => self.field.project_down(),
         };
-        true
+
+        update
     }
 
     fn view(&self, ctx: &yew::Context<Self>) -> Html {

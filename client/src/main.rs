@@ -23,9 +23,7 @@ struct AssetPreloaderProps {
 
 struct AssetPreloader {
     n_loaded: usize,
-
-    // storing these so they aren't dropped before they're called
-    loaded_callback_closures: Vec<Closure<dyn Fn()>>,
+    loaded_callback_closures: Vec<Closure<dyn Fn()>>, // storing these so they aren't dropped before being called
 }
 
 impl AssetPreloader {
@@ -66,7 +64,7 @@ impl Component for AssetPreloader {
         html! {
             <div>{
                 if self.n_loaded == ctx.props().n_assets {
-                    html! { <Board /> }
+                    html! { <Board/> }
                 } else {
                     html! { <p class="loading-text">{ "Loading..." }</p> }
                 }
@@ -82,8 +80,6 @@ impl Component for AssetPreloader {
 }
 
 fn main() {
-    let props = AssetPreloaderProps {
-        n_assets: Tetromino::iter().count(),
-    };
-    yew::start_app_with_props::<AssetPreloader>(props);
+    let n_assets = Tetromino::iter().count();
+    yew::start_app_with_props::<AssetPreloader>(AssetPreloaderProps { n_assets });
 }
