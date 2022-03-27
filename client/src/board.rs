@@ -10,7 +10,7 @@ use tetrox::{
 };
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, HtmlImageElement};
-use yew::{html, Component, Context, Html, KeyboardEvent, NodeRef};
+use yew::{html, Component, Context, Html, KeyboardEvent, NodeRef, Properties};
 
 pub enum BoardMessage {
     KeyPressed(KeyboardEvent),
@@ -26,6 +26,14 @@ pub enum BoardMessage {
     DasRight,
     ProjectDown,
     HardDrop,
+}
+
+#[derive(Clone, PartialEq, Properties)]
+pub struct BoardProps {
+    pub width: usize,
+    pub height: usize,
+    pub hidden: usize,
+    pub queue_len: usize,
 }
 
 pub struct BoardTimers {
@@ -75,13 +83,15 @@ pub struct Board {
     prev_lock_delay_actions: usize,
 }
 
+pub const SQUARE_MUL: usize = 32; // the size of each square on the field
+
 pub const LABEL_HEIGHT: usize = 30; // height of "hold" and "next" labels
-pub const PIECE_HEIGHT: usize = 100; // height of hold/queue piece
+
+// TODO: square times max height
+pub const PIECE_HEIGHT: usize = SQUARE_MUL * 2 + 36; // height of hold/queue piece
 
 pub const SIDE_BAR_WIDTH: usize = 170; // width of hold/queue panels
 pub const SIDE_BAR_PADDING: usize = 6; // bottom padding of hold/queue panels
-
-pub const SQUARE_MUL: usize = 32; // the size of each square on the field
 
 impl Board {
     fn draw_hold_piece(&self) {
@@ -159,7 +169,7 @@ impl Board {
             for row in self.field.hidden() + 1..self.field.height() {
                 context.begin_path();
                 context.move_to(0.0, (row * SQUARE_MUL) as f64);
-                context.line_to(fh_px, (row * SQUARE_MUL) as f64);
+                context.line_to(fw_px, (row * SQUARE_MUL) as f64);
                 context.stroke();
             }
 
@@ -230,8 +240,12 @@ impl Board {
 
     fn reset(&mut self, ctx: &Context<Board>) {
         self.bag = SevenBag::new();
-        self.field = DefaultField::new(10, 40, 20, 5, &mut self.bag);
+
+        let props = ctx.props();
+        self.field = DefaultField::new(props.width, props.height, props.hidden, props.queue_len, &mut self.bag);
+
         self.input_states = InputStates::new();
+
         self.timers = BoardTimers::new();
         self.timers.reset_gravity(ctx);
     }
@@ -298,11 +312,12 @@ impl Board {
 
 impl Component for Board {
     type Message = BoardMessage;
-    type Properties = ();
+    type Properties = BoardProps;
 
-    fn create(_ctx: &Context<Self>) -> Self {
+    fn create(ctx: &Context<Self>) -> Self {
         let mut bag = SevenBag::new();
-        let field = DefaultField::new(10, 40, 20, 5, &mut bag); // TODO: props?
+        let props = ctx.props();
+        let field = DefaultField::new(props.width, props.height, props.hidden, props.queue_len, &mut bag);
 
         Board {
             bag,
@@ -356,7 +371,13 @@ impl Component for Board {
                     self.input_states
                         .set_pressed_with_action(Input::Rotate180, || self.field.try_rotate_180(&ExtendedSrsKickTable)),
                 ),
-                "d" => self.field.swap_hold_piece(&mut self.bag),
+                "d" => {
+                    let result = self.field.swap_hold_piece(&mut self.bag);
+                    if result {
+                        self.timers.cancel_lock_delay();
+                    }
+                    result
+                }
                 " " => to_true(self.input_states.set_pressed_with_action(Input::HardDrop, || {
                     to_true(ctx.link().send_message(BoardMessage::HardDrop))
                 })),

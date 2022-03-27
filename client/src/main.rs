@@ -27,11 +27,9 @@ struct AssetPreloader {
 }
 
 impl AssetPreloader {
-    fn populate_asset_cache(&mut self, link: &Scope<Self>) {
+    fn register_asset_load_callbacks(&mut self, link: &Scope<Self>) {
         for kind in Tetromino::iter() {
-            let field_square_mul = board::SQUARE_MUL as u32;
-            let image = HtmlImageElement::new_with_width_and_height(field_square_mul, field_square_mul).unwrap();
-
+            let image = HtmlImageElement::new().unwrap();
             let asset_src = format!("assets/skins/{}/{}.png", SKIN_NAME, kind.asset_name());
             image.set_src(&asset_src);
 
@@ -64,7 +62,7 @@ impl Component for AssetPreloader {
         html! {
             <div>{
                 if self.n_loaded == ctx.props().n_assets {
-                    html! { <Board/> }
+                    html! { <Board width=10 height=40 hidden=20 queue_len=5/> }
                 } else {
                     html! { <p class="loading-text">{ "Loading..." }</p> }
                 }
@@ -74,7 +72,7 @@ impl Component for AssetPreloader {
 
     fn rendered(&mut self, ctx: &yew::Context<Self>, first_render: bool) {
         if first_render {
-            self.populate_asset_cache(ctx.link());
+            self.register_asset_load_callbacks(ctx.link());
         }
     }
 }
