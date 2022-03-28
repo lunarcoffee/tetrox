@@ -22,6 +22,11 @@ body {
     flex-direction: row;
 }
 
+.field-left-panel {
+    display: flex;
+    flex-direction: column;
+}
+
 .hold-piece {
     margin-top: 110px;
 }
@@ -33,6 +38,23 @@ body {
     border-radius: 4px;
 
     box-shadow: 0 0 36px 0 #000000bb;
+}
+
+.game-stats {
+    text-align: right;
+    width: 170px;
+    overflow: visible;
+    white-space: nowrap;
+}
+
+.clear-type-text {
+    color: #ccc;
+
+    font-size: 1.8em;
+    font-family: "IBM Plex Sans";
+    direction: rtl;
+
+    margin-right: -6px;
 }
 
 .field {

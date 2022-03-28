@@ -4,8 +4,8 @@ use crate::input::{Input, InputStates};
 use gloo_timers::callback::{Interval, Timeout};
 use strum::IntoEnumIterator;
 use tetrox::{
-    field::{DefaultField, Square},
-    tetromino::{ExtendedSrsKickTable, SevenBag, SrsKickTable, Tetromino},
+    field::{DefaultField, LineClear, Square},
+    tetromino::{ExtendedSrsKickTable, SevenBag, SrsKickTable, SrsTetromino},
     Bag, Coords, PieceKind,
 };
 use wasm_bindgen::JsCast;
@@ -28,6 +28,8 @@ pub enum BoardMessage {
 
     HardDrop,
     LockDelayDrop,
+
+    FadeClearText,
 }
 
 #[derive(Clone, PartialEq, Properties)]
@@ -41,6 +43,7 @@ pub struct BoardProps {
 pub struct BoardTimers {
     gravity: Option<Interval>,
     lock_delay: Option<Timeout>,
+    clear_type_animation: Option<Interval>,
 }
 
 const GRAVITY_DELAY: u32 = 1_000;
@@ -51,6 +54,7 @@ impl BoardTimers {
         BoardTimers {
             gravity: None,
             lock_delay: None,
+            clear_type_animation: None,
         }
     }
 
@@ -65,22 +69,35 @@ impl BoardTimers {
         let link = ctx.link().clone();
         self.lock_delay = Some(Timeout::new(LOCK_DELAY, move || {
             link.send_message(BoardMessage::LockDelayDrop);
-        }))
+        }));
     }
 
     fn cancel_lock_delay(&mut self) { self.lock_delay.take().map(|timer| timer.cancel()); }
+
+    fn fade_clear_text(&mut self, ctx: &Context<Board>) {
+        let link = ctx.link().clone();
+        self.clear_type_animation = Some(Interval::new(20, move || {
+            link.send_message(BoardMessage::FadeClearText);
+        }));
+    }
+
+    fn cancel_clear_text(&mut self) { self.clear_type_animation.take().map(|timer| timer.cancel()); }
 }
 
 pub struct Board {
     bag: SevenBag,
-    field: DefaultField<Tetromino>,
+    field: DefaultField<SrsTetromino>,
     input_states: InputStates,
 
     field_canvas: NodeRef,
     hold_piece_canvas: NodeRef,
     next_queue_canvas: NodeRef,
 
-    asset_cache: HashMap<Tetromino, HtmlImageElement>, // cache image assets for performance
+    line_clear_type: Option<LineClear<SrsTetromino>>,
+    line_clear_text: String,
+    line_clear_text_opacity: f64,
+
+    asset_cache: HashMap<SrsTetromino, HtmlImageElement>, // cache image assets for performance
     timers: BoardTimers,
     prev_lock_delay_actions: usize,
 }
@@ -246,11 +263,14 @@ impl Board {
 
         self.input_states = InputStates::new();
 
+        self.line_clear_type = None;
+        self.line_clear_text = "".to_string();
+
         self.timers = BoardTimers::new();
         self.timers.reset_gravity(ctx);
     }
 
-    fn draw_piece(&self, kind: Tetromino, context: &CanvasRenderingContext2d, x_offset: usize, y_offset: usize) {
+    fn draw_piece(&self, kind: SrsTetromino, context: &CanvasRenderingContext2d, x_offset: usize, y_offset: usize) {
         let base_coords = kind
             .spawn_offsets()
             .into_iter()
@@ -268,7 +288,7 @@ impl Board {
     }
 
     // draw a square at the given coords on a canvas
-    fn draw_square(&self, kind: &Tetromino, context: &CanvasRenderingContext2d, row: usize, col: usize) {
+    fn draw_square(&self, kind: &SrsTetromino, context: &CanvasRenderingContext2d, row: usize, col: usize) {
         context
             .draw_image_with_html_image_element_and_dw_and_dh(
                 &self.asset_cache.get(kind).unwrap(),
@@ -278,6 +298,22 @@ impl Board {
                 SQUARE_MUL as f64,
             )
             .unwrap();
+    }
+
+    fn update_clear_text(&mut self, ctx: &Context<Self>) {
+        if let Some(clear_type) = self.line_clear_type.as_ref() {
+            let n_lines = clear_type.n_lines();
+
+            if n_lines > 0 || clear_type.spin().is_some() {
+                let n_text = ["", "single", "double", "triple", "quad"][n_lines];
+                let spin = clear_type.spin().map(|_| "t-spin ").unwrap_or("");
+                let mini = clear_type.is_mini().then(|| "mini ").unwrap_or("");
+                self.line_clear_text = format!("{}{}{}", spin, mini, n_text);
+
+                self.line_clear_text_opacity = 1.0;
+                self.timers.fade_clear_text(ctx);
+            }
+        }
     }
 
     // transforms `coords` so that if a square is drawn from each set of coords, the entire image will be centered
@@ -297,8 +333,8 @@ impl Board {
             .collect()
     }
 
-    fn populate_asset_cache() -> HashMap<Tetromino, HtmlImageElement> {
-        Tetromino::iter()
+    fn populate_asset_cache() -> HashMap<SrsTetromino, HtmlImageElement> {
+        SrsTetromino::iter()
             .map(|kind| {
                 let field_square_mul = SQUARE_MUL as u32;
                 let image = HtmlImageElement::new_with_width_and_height(field_square_mul, field_square_mul).unwrap();
@@ -327,6 +363,10 @@ impl Component for Board {
             field_canvas: NodeRef::default(),
             hold_piece_canvas: NodeRef::default(),
             next_queue_canvas: NodeRef::default(),
+
+            line_clear_type: None,
+            line_clear_text: "".to_string(),
+            line_clear_text_opacity: 1.0,
 
             asset_cache: Self::populate_asset_cache(),
             timers: BoardTimers::new(),
@@ -408,7 +448,9 @@ impl Component for Board {
                 self.timers.reset_gravity(ctx);
                 self.timers.cancel_lock_delay();
                 self.prev_lock_delay_actions = 0;
-                self.field.hard_drop(&mut self.bag)
+                self.line_clear_type = Some(self.field.hard_drop(&mut self.bag));
+                self.update_clear_text(ctx);
+                true
             }
             // only lock if the piece is still touching the stack
             BoardMessage::LockDelayDrop => {
@@ -418,7 +460,18 @@ impl Component for Board {
                     false
                 }
             }
+            _ => true,
         };
+
+        // messages for animations
+        match msg {
+            BoardMessage::FadeClearText => {
+                if self.line_clear_text_opacity > 0.0 {
+                    self.line_clear_text_opacity /= 1.0 / (self.line_clear_text_opacity - 1e-10);
+                }
+            }
+            _ => {}
+        }
 
         // activate lock delay after the piece touches the stack while falling
         match msg {
@@ -457,12 +510,21 @@ impl Component for Board {
 
         html! {
             <div class="game">
-                <div class="hold-piece">
-                    <canvas ref={ self.hold_piece_canvas.clone() }
-                            class="hold-piece-canvas"
-                            width={ SIDE_BAR_WIDTH.to_string() }
-                            height={ (LABEL_HEIGHT + PIECE_HEIGHT + SIDE_BAR_PADDING).to_string() }>
-                    </canvas>
+                <div class="field-left-panel">
+                    <div class="hold-piece">
+                        <canvas ref={ self.hold_piece_canvas.clone() }
+                                class="hold-piece-canvas"
+                                width={ SIDE_BAR_WIDTH.to_string() }
+                                height={ (LABEL_HEIGHT + PIECE_HEIGHT + SIDE_BAR_PADDING).to_string() }>
+                        </canvas>
+                    </div>
+                    <div class="game-stats">
+                        <p
+                         class="clear-type-text"
+                         style={ format!("opacity: {};", self.line_clear_text_opacity) }>
+                            { &self.line_clear_text }
+                        </p>
+                    </div>
                 </div>
                 <div class="field">
                     <canvas ref={ self.field_canvas.clone() }

@@ -8,7 +8,7 @@ use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use yew::{html::Scope, Context};
 
-use crate::board::{BoardMessage, Board};
+use crate::board::{Board, BoardMessage};
 
 // timeout for das, intervals for arr and soft dropping
 enum MoveTimer {
@@ -59,7 +59,7 @@ impl InputStates {
     fn set_state(&mut self, input: Input, state: InputState) {
         self.states.clone().lock().unwrap().insert(input, state);
     }
-    
+
     pub fn is_pressed(&self, input: Input) -> bool {
         self.states.clone().lock().unwrap().get(&input).unwrap() == &InputState::Pressed
     }
@@ -89,9 +89,7 @@ impl InputStates {
     }
 
     // this will cause the suppressed held input to stop repeating until set to pressed or released
-    pub fn set_suppressed(&mut self, input: Input) {
-        self.set_state(input, InputState::Suppressed);
-    }
+    pub fn set_suppressed(&mut self, input: Input) { self.set_state(input, InputState::Suppressed); }
 
     // wait for das if the left input isn't already pressed
     pub fn left_pressed(&mut self, ctx: &Context<Board>) {

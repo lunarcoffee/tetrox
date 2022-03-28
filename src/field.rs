@@ -7,7 +7,9 @@ pub enum Square<P: PieceKind> {
 }
 
 impl<P: PieceKind> Square<P> {
-    fn is_empty(&self) -> bool { matches!(self, Square::Empty) }
+    pub fn is_empty(&self) -> bool { matches!(self, Square::Empty) }
+
+    pub fn is_filled(&self) -> bool { matches!(self, Square::Filled(_)) }
 }
 
 #[derive(Clone)]
@@ -25,11 +27,27 @@ impl<P: PieceKind> Line<P> {
     pub fn squares(&self) -> &[Square<P>] { &self.squares }
 
     // all squares are filled (not empty or solid garbage)
-    fn is_clear(&self) -> bool { self.squares.iter().all(|s| matches!(s, Square::Filled(_))) }
+    fn is_clear(&self) -> bool { self.squares.iter().all(|s| s.is_filled()) }
 
     fn get(&self, i: usize) -> Square<P> { self.squares[i] }
 
     fn get_mut(&mut self, i: usize) -> &mut Square<P> { &mut self.squares[i] }
+}
+
+pub struct LineClear<P: PieceKind> {
+    n_lines: usize,
+    spin: Option<P>,
+    is_mini: bool,
+}
+
+impl<P: PieceKind> LineClear<P> {
+    pub fn new(n_lines: usize, spin: Option<P>, is_mini: bool) -> Self { LineClear { n_lines, spin, is_mini } }
+
+    pub fn n_lines(&self) -> usize { self.n_lines }
+
+    pub fn spin(&self) -> Option<P> { self.spin }
+
+    pub fn is_mini(&self) -> bool { self.is_mini }
 }
 
 pub struct LivePiece<P: PieceKind> {
@@ -113,7 +131,7 @@ impl<P: PieceKind> LivePiece<P> {
             // make sure the coords are in bounds and are not filled by other pieces
             .any(|c| {
                 !field.coords_in_bounds(&c)
-                    || !field.get_at(c).is_empty() && old_piece.map(|p| !p.coords.contains(c)).unwrap_or(true)
+                    || !field.get_at(c).unwrap().is_empty() && old_piece.map(|p| !p.coords.contains(c)).unwrap_or(true)
             })
     }
 }
@@ -132,6 +150,10 @@ pub struct DefaultField<P: PieceKind> {
     piece_origin: Coords,
 
     lock_delay_actions: Option<usize>,
+
+    // used for spin detection (e.g. t-spins)
+    last_cur_piece_kick: Option<Coords>,
+    last_move_rotated: bool,
 }
 
 impl<P: PieceKind> DefaultField<P> {
@@ -157,6 +179,9 @@ impl<P: PieceKind> DefaultField<P> {
             piece_origin,
 
             lock_delay_actions: None,
+
+            last_cur_piece_kick: None,
+            last_move_rotated: false,
         };
         field.draw_cur_piece();
         field
@@ -176,7 +201,13 @@ impl<P: PieceKind> DefaultField<P> {
 
     pub fn lines(&self) -> &[Line<P>] { &self.lines }
 
-    pub fn get_at(&self, Coords(row, col): &Coords) -> Square<P> { self.lines[*row as usize].get(*col as usize) }
+    pub fn get_at(&self, coords @ Coords(row, col): &Coords) -> Option<Square<P>> {
+        if self.coords_in_bounds(coords) {
+            Some(self.lines[*row as usize].get(*col as usize))
+        } else {
+            None
+        }
+    }
 
     fn set_at(&mut self, Coords(row, col): &Coords, square: Square<P>) {
         *self.lines[*row as usize].get_mut(*col as usize) = square;
@@ -189,6 +220,10 @@ impl<P: PieceKind> DefaultField<P> {
     pub fn shadow_piece(&self) -> LivePiece<P> { self.cur_piece.projected_down(&self) }
 
     pub fn actions_since_lock_delay(&self) -> Option<usize> { self.lock_delay_actions }
+
+    pub fn last_cur_piece_kick(&self) -> Option<Coords> { self.last_cur_piece_kick }
+
+    pub fn last_move_rotated(&self) -> bool { self.last_move_rotated }
 
     // used to check whether to activate lock delay
     pub fn cur_piece_cannot_move_down(&self) -> bool {
@@ -209,37 +244,44 @@ impl<P: PieceKind> DefaultField<P> {
     // move the current piece to a different position (fails if blocked)
     pub fn try_shift(&mut self, rows: i32, cols: i32) -> bool {
         let action = self.try_update_cur_piece(self.cur_piece.shifted(rows, cols));
+        self.last_move_rotated &= !action;
         self.update_lock_delay(action)
     }
 
     pub fn try_rotate_cw(&mut self, kick_table: &impl KickTable<P>) -> bool {
         let kicks = kick_table.rotate_cw(self.cur_piece.kind(), self.cur_piece.rotation_state());
         let rotated = self.cur_piece.rotated_cw();
-        let action = self.try_rotate_with_kicks(kicks, rotated);
-        self.update_lock_delay(action)
+        self.last_move_rotated = self.try_rotate_with_kicks(kicks, rotated);
+        self.update_lock_delay(self.last_move_rotated)
     }
 
     pub fn try_rotate_ccw(&mut self, kick_table: &impl KickTable<P>) -> bool {
         let kicks = kick_table.rotate_ccw(self.cur_piece.kind(), self.cur_piece.rotation_state());
         let rotated = self.cur_piece.rotated_ccw();
-        let action = self.try_rotate_with_kicks(kicks, rotated);
-        self.update_lock_delay(action)
+        self.last_move_rotated = self.try_rotate_with_kicks(kicks, rotated);
+        self.update_lock_delay(self.last_move_rotated)
     }
 
     pub fn try_rotate_180(&mut self, kick_table: &impl KickTable180<P>) -> bool {
         let kicks = kick_table.rotate_180(self.cur_piece.kind(), self.cur_piece.rotation_state());
         let rotated = self.cur_piece.rotated_180();
-        let action = self.try_rotate_with_kicks(kicks, rotated);
-        self.update_lock_delay(action)
+        self.last_move_rotated = self.try_rotate_with_kicks(kicks, rotated);
+        self.update_lock_delay(self.last_move_rotated)
     }
 
     // tries kicks on a rotated piece, swapping with the current piece if one fits
     fn try_rotate_with_kicks(&mut self, kicks: Vec<Coords>, rotated: LivePiece<P>) -> bool {
         kicks
             .into_iter()
-            .map(|Coords(rows, cols)| rotated.shifted(rows, cols)) // apply kick to rotated piece
-            .find(|piece| !piece.is_blocked(Some(&self.cur_piece), &self)) // first kick that isn't blcoked
-            .map(|piece| self.try_update_cur_piece(piece)) // update if a fitting kicked rotation exists
+            .map(|kick| (rotated.shifted(kick.0, kick.1), kick)) // apply kick to rotated piece
+            .find(|(piece, _)| !piece.is_blocked(Some(&self.cur_piece), &self)) // first kick that isn't blcoked
+            .map(|(piece, kick)| {
+                if kick != Coords(0, 0) {
+                    // used for checking spins (e.g t-spins)
+                    self.last_cur_piece_kick = Some(kick);
+                }
+                self.try_update_cur_piece(piece)
+            }) // update if a fitting kicked rotation exists
             .unwrap_or(false)
     }
 
@@ -268,8 +310,9 @@ impl<P: PieceKind> DefaultField<P> {
         if self.hold_swapped {
             false
         } else {
-            self.lock_delay_actions = None;
+            self.last_cur_piece_kick = None;
             self.hold_swapped = true;
+            self.lock_delay_actions = None;
 
             let hold_kind = self.hold_piece;
             self.hold_piece = Some(self.cur_piece.kind());
@@ -284,20 +327,23 @@ impl<P: PieceKind> DefaultField<P> {
 
     // swap the current piece with the shadow piece
     pub fn project_down(&mut self) -> bool {
-        let projected = self.cur_piece.projected_down(&self);
+        let projected = self.cur_piece.projected_down(&self); // TODO: soft drop must reset last_move_rotated, but hard dropping must not
         self.try_update_cur_piece(projected)
     }
 
-    pub fn hard_drop(&mut self, bag: &mut impl Bag<P>) -> bool {
-        self.lock_delay_actions = None;
+    pub fn hard_drop(&mut self, bag: &mut impl Bag<P>) -> LineClear<P> {
         self.hold_swapped = false;
+        self.lock_delay_actions = None;
 
         self.project_down();
-        self.clear_lines();
-        self.try_spawn_no_erase(bag)
+        let clear_type = self.clear_lines();
+        self.last_cur_piece_kick = None;
+        self.try_spawn_no_erase(bag);
+
+        clear_type
     }
 
-    pub fn clear_lines(&mut self) {
+    pub fn clear_lines(&mut self) -> LineClear<P> {
         let uncleared_lines = self
             .lines
             .iter()
@@ -306,8 +352,18 @@ impl<P: PieceKind> DefaultField<P> {
             .collect::<Vec<_>>();
 
         let n_cleared = self.height - uncleared_lines.len();
+        let clear_type = self.line_clear_type(n_cleared);
+
+        // pad board with empty lines
         self.lines = (0..n_cleared).map(|_| Line::new(self.width)).collect();
         self.lines.extend(uncleared_lines);
+
+        clear_type
+    }
+
+    pub fn line_clear_type(&self, n_cleared: usize) -> LineClear<P> {
+        let (spin, is_mini) = self.cur_piece.kind().detect_spin(&self);
+        LineClear::new(n_cleared, spin, is_mini)
     }
 
     // changes and redraws the current piece if the new piece isn't blocked

@@ -1,8 +1,11 @@
+#![feature(array_chunks)]
+
 pub mod field;
 pub mod tetromino;
 
 use std::ops;
 
+use field::DefaultField;
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
 
@@ -59,6 +62,9 @@ pub trait PieceKind: Copy {
     // index of the rotation pivot of the piece with a possibly zero offset
     // pieces like the i tetromino have apparent pivots that intersect
     fn pivot_offset(&self, rotation_state: RotationState) -> (usize, CoordsFloat);
+
+    // returns the type of spin after a hard drop (if any) and whether it is mini
+    fn detect_spin(&self, field: &DefaultField<Self>) -> (Option<Self>, bool);
 
     fn asset_name(&self) -> &str;
 }

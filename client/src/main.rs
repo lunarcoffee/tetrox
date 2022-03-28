@@ -1,8 +1,6 @@
-#![feature(stmt_expr_attributes)]
-
 use board::Board;
 use strum::IntoEnumIterator;
-use tetrox::{tetromino::Tetromino, PieceKind};
+use tetrox::{tetromino::SrsTetromino, PieceKind};
 use wasm_bindgen::{prelude::Closure, JsCast};
 use web_sys::HtmlImageElement;
 use yew::{html, html::Scope, Component, Properties};
@@ -28,7 +26,7 @@ struct AssetPreloader {
 
 impl AssetPreloader {
     fn register_asset_load_callbacks(&mut self, link: &Scope<Self>) {
-        for kind in Tetromino::iter() {
+        for kind in SrsTetromino::iter() {
             let image = HtmlImageElement::new().unwrap();
             let asset_src = format!("assets/skins/{}/{}.png", SKIN_NAME, kind.asset_name());
             image.set_src(&asset_src);
@@ -78,6 +76,6 @@ impl Component for AssetPreloader {
 }
 
 fn main() {
-    let n_assets = Tetromino::iter().count();
+    let n_assets = SrsTetromino::iter().count();
     yew::start_app_with_props::<AssetPreloader>(AssetPreloaderProps { n_assets });
 }
