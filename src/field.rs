@@ -26,6 +26,8 @@ impl<P: PieceKind> Line<P> {
 
     pub fn squares(&self) -> &[Square<P>] { &self.squares }
 
+    fn is_empty(&self) -> bool { self.squares.iter().all(|s| s.is_empty()) }
+
     // all squares are filled (not empty or solid garbage)
     fn is_clear(&self) -> bool { self.squares.iter().all(|s| s.is_filled()) }
 
@@ -201,6 +203,13 @@ impl<P: PieceKind> DefaultField<P> {
 
     pub fn lines(&self) -> &[Line<P>] { &self.lines }
 
+    pub fn is_empty(&mut self) -> bool {
+        self.erase_cur_piece();
+        let is_empty = self.lines.iter().all(|l| l.is_empty());
+        self.draw_cur_piece();
+        is_empty
+    }
+
     pub fn get_at(&self, coords @ Coords(row, col): &Coords) -> Option<Square<P>> {
         if self.coords_in_bounds(coords) {
             Some(self.lines[*row as usize].get(*col as usize))
@@ -326,8 +335,9 @@ impl<P: PieceKind> DefaultField<P> {
     }
 
     // swap the current piece with the shadow piece
-    pub fn project_down(&mut self) -> bool {
-        let projected = self.cur_piece.projected_down(&self); // TODO: soft drop must reset last_move_rotated, but hard dropping must not
+    pub fn project_down(&mut self, is_hard_drop: bool) -> bool {
+        let projected = self.cur_piece.projected_down(&self);
+        self.last_move_rotated = self.last_move_rotated && is_hard_drop; // last move before hard drop
         self.try_update_cur_piece(projected)
     }
 
@@ -335,7 +345,7 @@ impl<P: PieceKind> DefaultField<P> {
         self.hold_swapped = false;
         self.lock_delay_actions = None;
 
-        self.project_down();
+        self.project_down(true);
         let clear_type = self.clear_lines();
         self.last_cur_piece_kick = None;
         self.try_spawn_no_erase(bag);

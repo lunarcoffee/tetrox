@@ -89,7 +89,6 @@ impl PieceKind for SrsTetromino {
                 }
             }
         }
-        // TODO: other spins..? maybe make this more modular to support different spin sets? e.g. pass a spin set in
         (None, false)
     }
 
@@ -104,45 +103,45 @@ impl PieceKind for SrsTetromino {
             SrsTetromino::I => "i",
         }
     }
+
+    fn iter() -> Box<dyn Iterator<Item = Self>> { Box::new(<Self as IntoEnumIterator>::iter()) }
+
+    fn n_kinds() -> usize { 7 }
 }
 
-pub struct SevenBag {
-    cur_bag: Vec<SrsTetromino>,
-    next_bag: Vec<SrsTetromino>,
+pub struct SingleBag<P: PieceKind> {
+    bag: Vec<P>,
 }
 
-impl SevenBag {
+impl<P: PieceKind> SingleBag<P> {
     pub fn new() -> Self {
-        let mut bag = SevenBag {
-            cur_bag: vec![],
-            next_bag: vec![],
-        };
-        bag.update_bags();
+        let mut bag = SingleBag { bag: vec![] };
+        bag.update_bag();
+        bag.update_bag();
         bag
     }
 
-    fn update_bags(&mut self) {
-        if self.cur_bag.is_empty() {
-            self.cur_bag.extend(&self.next_bag);
-
-            self.next_bag = SrsTetromino::iter().collect::<Vec<_>>();
-            self.next_bag.shuffle(&mut rand::thread_rng());
+    fn update_bag(&mut self) {
+        if self.bag.len() <= 7 {
+            let mut next_bag = P::iter().collect::<Vec<_>>();
+            next_bag.shuffle(&mut rand::thread_rng());
+            self.bag.extend(next_bag);
         }
     }
 }
 
-impl Bag<SrsTetromino> for SevenBag {
-    fn next(&mut self) -> SrsTetromino {
-        self.update_bags();
-        self.cur_bag.pop().unwrap()
+impl<P: PieceKind> Bag<P> for SingleBag<P> {
+    fn next(&mut self) -> P {
+        self.update_bag();
+        self.bag.pop().unwrap()
     }
 
-    fn peek(&mut self) -> Box<dyn Iterator<Item = &SrsTetromino> + '_> {
-        self.update_bags();
-        Box::new(self.cur_bag.iter().rev().chain(self.next_bag.iter().rev()).take(7))
+    fn peek(&mut self) -> Box<dyn Iterator<Item = &P> + '_> {
+        self.update_bag();
+        Box::new(self.bag.iter().rev())
     }
 
-    fn lookahead(&self) -> usize { 7 }
+    fn lookahead(&self) -> usize { P::n_kinds() }
 }
 
 pub struct SrsKickTable;
@@ -177,10 +176,10 @@ impl KickTable<SrsTetromino> for SrsKickTable {
     }
 }
 
-// has non-guideline srs 180 kicks
-pub struct ExtendedSrsKickTable;
+// 180 rotate kick table from tetr.io
+pub struct Tetrio180KickTable;
 
-impl KickTable<SrsTetromino> for ExtendedSrsKickTable {
+impl KickTable<SrsTetromino> for Tetrio180KickTable {
     fn rotate_cw(&self, piece: SrsTetromino, rotation_state: RotationState) -> Vec<Coords> {
         SrsKickTable.rotate_cw(piece, rotation_state)
     }
@@ -190,7 +189,7 @@ impl KickTable<SrsTetromino> for ExtendedSrsKickTable {
     }
 }
 
-impl KickTable180<SrsTetromino> for ExtendedSrsKickTable {
+impl KickTable180<SrsTetromino> for Tetrio180KickTable {
     fn rotate_180(&self, _piece: SrsTetromino, rotation_state: RotationState) -> Vec<Coords> {
         match rotation_state {
             RotationState::Initial => vec![(0, 0), (-1, 0), (-1, 1), (-1, -1), (0, 1), (0, -1)],

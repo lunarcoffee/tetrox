@@ -1,11 +1,11 @@
 use board::Board;
-use strum::IntoEnumIterator;
 use tetrox::{tetromino::SrsTetromino, PieceKind};
 use wasm_bindgen::{prelude::Closure, JsCast};
 use web_sys::HtmlImageElement;
 use yew::{html, html::Scope, Component, Properties};
 
 mod board;
+mod canvas;
 mod input;
 
 const SKIN_NAME: &str = "tetrox";

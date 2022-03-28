@@ -67,6 +67,11 @@ pub trait PieceKind: Copy {
     fn detect_spin(&self, field: &DefaultField<Self>) -> (Option<Self>, bool);
 
     fn asset_name(&self) -> &str;
+
+    // iterator through all piece kinds
+    fn iter() -> Box<dyn Iterator<Item = Self>>;
+
+    fn n_kinds() -> usize { Self::iter().count() }
 }
 
 pub trait Bag<P: PieceKind> {
