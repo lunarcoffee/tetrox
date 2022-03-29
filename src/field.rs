@@ -40,16 +40,26 @@ pub struct LineClear<P: PieceKind> {
     n_lines: usize,
     spin: Option<P>,
     is_mini: bool,
+    is_perfect_clear: bool,
 }
 
 impl<P: PieceKind> LineClear<P> {
-    pub fn new(n_lines: usize, spin: Option<P>, is_mini: bool) -> Self { LineClear { n_lines, spin, is_mini } }
+    pub fn new(n_lines: usize, spin: Option<P>, is_mini: bool, is_perfect_clear: bool) -> Self {
+        LineClear {
+            n_lines,
+            spin,
+            is_mini,
+            is_perfect_clear,
+        }
+    }
 
     pub fn n_lines(&self) -> usize { self.n_lines }
 
     pub fn spin(&self) -> Option<P> { self.spin }
 
     pub fn is_mini(&self) -> bool { self.is_mini }
+
+    pub fn is_perfect_clear(&self) -> bool { self.is_perfect_clear }
 }
 
 pub struct LivePiece<P: PieceKind> {
@@ -203,12 +213,8 @@ impl<P: PieceKind> DefaultField<P> {
 
     pub fn lines(&self) -> &[Line<P>] { &self.lines }
 
-    pub fn is_empty(&mut self) -> bool {
-        self.erase_cur_piece();
-        let is_empty = self.lines.iter().all(|l| l.is_empty());
-        self.draw_cur_piece();
-        is_empty
-    }
+    // if after clearing lines the board is empty (used to check perfect clears)
+    pub fn is_clear(&mut self) -> bool { self.lines.iter().all(|l| l.is_empty() || l.is_clear()) }
 
     pub fn get_at(&self, coords @ Coords(row, col): &Coords) -> Option<Square<P>> {
         if self.coords_in_bounds(coords) {
@@ -371,9 +377,10 @@ impl<P: PieceKind> DefaultField<P> {
         clear_type
     }
 
-    pub fn line_clear_type(&self, n_cleared: usize) -> LineClear<P> {
+    pub fn line_clear_type(&mut self, n_cleared: usize) -> LineClear<P> {
         let (spin, is_mini) = self.cur_piece.kind().detect_spin(&self);
-        LineClear::new(n_cleared, spin, is_mini)
+        // web_sys::console::log_1(&format!("{}", self.is_clear()).into());
+        LineClear::new(n_cleared, spin, is_mini, self.is_clear())
     }
 
     // changes and redraws the current piece if the new piece isn't blocked

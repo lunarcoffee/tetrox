@@ -47,7 +47,7 @@ body {
     white-space: nowrap;
 }
 
-.clear-type-text {
+.game-stats-clear-text {
     color: #ccc;
 
     font-size: 1.8em;
@@ -55,6 +55,7 @@ body {
     direction: rtl;
 
     margin-right: -6px;
+    margin-bottom: -0.7em;
 }
 
 .field {

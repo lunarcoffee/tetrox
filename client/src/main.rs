@@ -6,6 +6,7 @@ use yew::{html, html::Scope, Component, Properties};
 
 mod board;
 mod canvas;
+mod game_stats;
 mod input;
 
 const SKIN_NAME: &str = "tetrox";

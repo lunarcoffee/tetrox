@@ -1,8 +1,9 @@
 use crate::canvas::CanvasRenderer;
+use crate::game_stats::GameStatsDrawer;
 use crate::input::{Input, InputStates};
 use gloo_timers::callback::{Interval, Timeout};
 use tetrox::{
-    field::{DefaultField, LineClear},
+    field::DefaultField,
     tetromino::{SingleBag, SrsKickTable, SrsTetromino, Tetrio180KickTable},
 };
 use yew::{html, Component, Context, Html, KeyboardEvent, Properties};
@@ -24,7 +25,8 @@ pub enum BoardMessage {
     HardDrop,
     LockDelayDrop,
 
-    FadeClearText,
+    FadeClearType,
+    FadePerfectClear,
 }
 
 #[derive(Clone, PartialEq, Properties)]
@@ -38,18 +40,22 @@ pub struct BoardProps {
 pub struct BoardTimers {
     gravity: Option<Interval>,
     lock_delay: Option<Timeout>,
+
     clear_type_animation: Option<Interval>,
+    perfect_clear_animation: Option<Interval>,
 }
 
 const GRAVITY_DELAY: u32 = 1_000;
 const LOCK_DELAY: u32 = 500;
 
 impl BoardTimers {
-    pub fn new() -> Self {
+    fn new() -> Self {
         BoardTimers {
             gravity: None,
             lock_delay: None,
+
             clear_type_animation: None,
+            perfect_clear_animation: None,
         }
     }
 
@@ -69,25 +75,33 @@ impl BoardTimers {
 
     fn cancel_lock_delay(&mut self) { self.lock_delay.take().map(|timer| timer.cancel()); }
 
-    fn fade_clear_text(&mut self, ctx: &Context<Board>) {
+    pub fn fade_clear_text(&mut self, ctx: &Context<Board>) {
         let link = ctx.link().clone();
         self.clear_type_animation = Some(Interval::new(20, move || {
-            link.send_message(BoardMessage::FadeClearText);
+            link.send_message(BoardMessage::FadeClearType);
         }));
     }
 
-    fn cancel_clear_text(&mut self) { self.clear_type_animation.take().map(|timer| timer.cancel()); }
+    pub fn cancel_clear_text(&mut self) { self.clear_type_animation.take().map(|timer| timer.cancel()); }
+
+    // TODO: general animation system
+    pub fn fade_perfect_clear_text(&mut self, ctx: &Context<Board>) {
+        let link = ctx.link().clone();
+        self.perfect_clear_animation = Some(Interval::new(20, move || {
+            link.send_message(BoardMessage::FadePerfectClear);
+        }));
+    }
+
+    pub fn cancel_perfect_clear_text(&mut self) { self.perfect_clear_animation.take().map(|timer| timer.cancel()); }
 }
 
 pub struct Board {
     bag: SingleBag<SrsTetromino>,
     field: DefaultField<SrsTetromino>,
     input_states: InputStates,
-    canvas_renderer: CanvasRenderer,
 
-    line_clear_type: Option<LineClear<SrsTetromino>>,
-    line_clear_text: String,
-    line_clear_text_opacity: f64,
+    canvas_renderer: CanvasRenderer,
+    game_stats_drawer: GameStatsDrawer,
 
     timers: BoardTimers,
     prev_lock_delay_actions: usize,
@@ -96,37 +110,15 @@ pub struct Board {
 impl Board {
     fn reset(&mut self, ctx: &Context<Board>) {
         self.bag = SingleBag::new();
-
+        
         let props = ctx.props();
         self.field = DefaultField::new(props.width, props.height, props.hidden, props.queue_len, &mut self.bag);
-
         self.input_states = InputStates::new();
 
-        self.line_clear_type = None;
-        self.line_clear_text = "".to_string();
+        self.game_stats_drawer = GameStatsDrawer::new();
 
         self.timers = BoardTimers::new();
         self.timers.reset_gravity(ctx);
-    }
-
-    fn update_clear_text(&mut self, ctx: &Context<Self>) {
-        if let Some(clear_type) = self.line_clear_type.as_ref() {
-            let n_lines = clear_type.n_lines();
-
-            if n_lines > 0 || clear_type.spin().is_some() {
-                let mini = clear_type.is_mini().then(|| "mini ").unwrap_or("");
-                let spin = clear_type.spin().map(|_| "t-spin ").unwrap_or("");
-                let n_text = ["", "single ", "double ", "triple ", "quad "][n_lines];
-                let perfect_clear = self.field.is_empty().then(|| "\nperfect clear").unwrap_or("");
-
-                self.line_clear_text = format!("{}{}{}{}", mini, spin, n_text, perfect_clear)
-                    .trim()
-                    .to_string();
-
-                self.line_clear_text_opacity = 1.0;
-                self.timers.fade_clear_text(ctx);
-            }
-        }
     }
 }
 
@@ -143,11 +135,9 @@ impl Component for Board {
             bag,
             field,
             input_states: InputStates::new(),
-            canvas_renderer: CanvasRenderer::new(),
 
-            line_clear_type: None,
-            line_clear_text: "".to_string(),
-            line_clear_text_opacity: 1.0,
+            canvas_renderer: CanvasRenderer::new(),
+            game_stats_drawer: GameStatsDrawer::new(),
 
             timers: BoardTimers::new(),
             prev_lock_delay_actions: 0,
@@ -228,8 +218,8 @@ impl Component for Board {
                 self.timers.reset_gravity(ctx);
                 self.timers.cancel_lock_delay();
                 self.prev_lock_delay_actions = 0;
-                self.line_clear_type = Some(self.field.hard_drop(&mut self.bag));
-                self.update_clear_text(ctx);
+                self.game_stats_drawer
+                    .set_clear_type(ctx, &mut self.timers, self.field.hard_drop(&mut self.bag));
                 true
             }
             // only lock if the piece is still touching the stack
@@ -245,13 +235,8 @@ impl Component for Board {
 
         // messages for animations
         match msg {
-            BoardMessage::FadeClearText => {
-                if self.line_clear_text_opacity > 0.0 {
-                    self.line_clear_text_opacity /= 1.0 / (self.line_clear_text_opacity - 1e-10);
-                } else {
-                    self.timers.cancel_clear_text();
-                }
-            }
+            BoardMessage::FadeClearType => self.game_stats_drawer.fade_clear_type(&mut self.timers),
+            BoardMessage::FadePerfectClear => self.game_stats_drawer.fade_perfect_clear(&mut self.timers),
             _ => {}
         }
 
@@ -285,19 +270,14 @@ impl Component for Board {
         update
     }
 
-    fn view(&self, ctx: &yew::Context<Self>) -> Html {        
+    fn view(&self, ctx: &yew::Context<Self>) -> Html {
         html! {
             <div class="game">
                 <div class="field-left-panel">
                     <div class="hold-piece">
                         { self.canvas_renderer.hold_piece_canvas() }
                     </div>
-                    <div class="game-stats">
-                        <p class="clear-type-text"
-                           style={ format!("opacity: {};", self.line_clear_text_opacity) }>
-                            { &self.line_clear_text }
-                        </p>
-                    </div>
+                    { self.game_stats_drawer.game_stats_html() }
                 </div>
                 <div class="field">
                     { self.canvas_renderer.field_canvas(&self.field, ctx) }
