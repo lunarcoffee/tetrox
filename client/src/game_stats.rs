@@ -47,7 +47,7 @@ impl GameStatsDrawer {
             let mini = clear_type.is_mini().then(|| "mini ").unwrap_or("");
             let spin = clear_type.spin().map(|_| "t-spin ").unwrap_or("");
             let n_text = ["", "single ", "double ", "triple ", "quad "][n_lines];
-            self.line_clear_text = format!("{}{}{}", spin, mini, n_text).trim().to_string();
+            self.line_clear_text = format!("{}{}{}", mini, spin, n_text).trim().to_string();
 
             self.line_clear_text_opacity = 1.0;
             timers.fade_clear_text(ctx);

@@ -1,4 +1,4 @@
-use std::ops;
+use std::{mem, ops};
 
 use num_traits::ToPrimitive;
 use rand::prelude::SliceRandom;
@@ -122,9 +122,12 @@ impl<P: PieceKind> SingleBag<P> {
     }
 
     fn update_bag(&mut self) {
-        if self.bag.len() <= 7 {
+        if self.bag.len() <= P::n_kinds() {
             let mut next_bag = P::iter().collect::<Vec<_>>();
             next_bag.shuffle(&mut rand::thread_rng());
+
+            // prepend to preserve peek order
+            mem::swap(&mut self.bag, &mut next_bag);
             self.bag.extend(next_bag);
         }
     }
