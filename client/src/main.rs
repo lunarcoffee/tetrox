@@ -1,9 +1,12 @@
+#![feature(trait_alias)]
+
 use board::Board;
 use tetrox::{tetromino::SrsTetromino, PieceKind};
 use wasm_bindgen::{prelude::Closure, JsCast};
 use web_sys::HtmlImageElement;
 use yew::{html, html::Scope, Component, Properties};
 
+mod animation;
 mod board;
 mod canvas;
 mod game_stats;

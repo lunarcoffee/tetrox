@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use gloo_timers::callback::{Interval, Timeout};
 use strum::IntoEnumIterator;
@@ -38,7 +35,7 @@ pub enum InputState {
 
 // states (pressed/released) of all inputs
 pub struct InputStates {
-    states: Arc<Mutex<HashMap<Input, InputState>>>,
+    states: Rc<RefCell<HashMap<Input, InputState>>>,
     timers: Vec<(Input, MoveTimer)>,
 }
 
@@ -50,18 +47,16 @@ pub const SOFT_DROP_RATE: u32 = 0;
 impl InputStates {
     pub fn new() -> Self {
         let map = Input::iter().map(|input| (input, InputState::Released)).collect();
-        let states = Arc::new(Mutex::new(map));
+        let states = Rc::new(RefCell::new(map));
         InputStates { states, timers: vec![] }
     }
 
-    fn get_state(&mut self, input: Input) -> InputState { *self.states.clone().lock().unwrap().get(&input).unwrap() }
+    fn get_state(&mut self, input: Input) -> InputState { *self.states.clone().borrow().get(&input).unwrap() }
 
-    fn set_state(&mut self, input: Input, state: InputState) {
-        self.states.clone().lock().unwrap().insert(input, state);
-    }
+    fn set_state(&mut self, input: Input, state: InputState) { self.states.clone().borrow_mut().insert(input, state); }
 
     pub fn is_pressed(&self, input: Input) -> bool {
-        self.states.clone().lock().unwrap().get(&input).unwrap() == &InputState::Pressed
+        self.states.clone().borrow().get(&input).unwrap() == &InputState::Pressed
     }
 
     fn set_pressed(&mut self, input: Input) { self.set_state(input, InputState::Pressed); }
@@ -144,7 +139,7 @@ impl InputStates {
         let states = self.states.clone();
         let link = ctx.link().clone();
         let action = move || {
-            if states.lock().unwrap().get(&Input::Left).unwrap() == &InputState::Pressed {
+            if states.borrow().get(&Input::Left).unwrap() == &InputState::Pressed {
                 Self::send_message_or_if_zero(&link, AUTO_REPEAT_RATE, BoardMessage::DasLeft, BoardMessage::MoveLeft)
             }
         };
@@ -158,7 +153,7 @@ impl InputStates {
         let states = self.states.clone();
         let link = ctx.link().clone();
         let action = move || {
-            if states.lock().unwrap().get(&Input::Right).unwrap() == &InputState::Pressed {
+            if states.borrow().get(&Input::Right).unwrap() == &InputState::Pressed {
                 Self::send_message_or_if_zero(&link, AUTO_REPEAT_RATE, BoardMessage::DasRight, BoardMessage::MoveRight)
             }
         };

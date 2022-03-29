@@ -1,3 +1,8 @@
+use std::cell::RefCell;
+use std::collections::HashSet;
+use std::rc::Rc;
+
+use crate::animation::{Animation, AnimationState};
 use crate::canvas::CanvasRenderer;
 use crate::game_stats::GameStatsDrawer;
 use crate::input::{Input, InputStates};
@@ -25,8 +30,8 @@ pub enum BoardMessage {
     HardDrop,
     LockDelayDrop,
 
-    FadeClearType,
-    FadePerfectClear,
+    TickAnimation(Animation),
+    StopAnimation(Animation),
 }
 
 #[derive(Clone, PartialEq, Properties)]
@@ -40,22 +45,28 @@ pub struct BoardProps {
 pub struct BoardTimers {
     gravity: Option<Interval>,
     lock_delay: Option<Timeout>,
-
-    clear_type_animation: Option<Interval>,
-    perfect_clear_animation: Option<Interval>,
+    animation_loop: Option<Interval>,
 }
 
 const GRAVITY_DELAY: u32 = 1_000;
 const LOCK_DELAY: u32 = 500;
 
 impl BoardTimers {
-    fn new() -> Self {
+    fn new(ctx: &Context<Board>, animations: Rc<RefCell<HashSet<Animation>>>) -> Self {
+        // tick each animation once every frame at about 60 fps
+        let link = ctx.link().clone();
+        let animation_loop = Some(Interval::new(17, move || {
+            // clone animations to avoid double borrow on animation stop
+            let active_animations = animations.borrow().iter().cloned().collect::<Vec<_>>();
+            for animation in active_animations {
+                link.send_message(BoardMessage::TickAnimation(animation));
+            }
+        }));
+
         BoardTimers {
             gravity: None,
             lock_delay: None,
-
-            clear_type_animation: None,
-            perfect_clear_animation: None,
+            animation_loop,
         }
     }
 
@@ -74,25 +85,12 @@ impl BoardTimers {
     }
 
     fn cancel_lock_delay(&mut self) { self.lock_delay.take().map(|timer| timer.cancel()); }
+}
 
-    pub fn fade_clear_text(&mut self, ctx: &Context<Board>) {
-        let link = ctx.link().clone();
-        self.clear_type_animation = Some(Interval::new(20, move || {
-            link.send_message(BoardMessage::FadeClearType);
-        }));
+impl Drop for BoardTimers {
+    fn drop(&mut self) {
+        self.animation_loop.take().unwrap().cancel();
     }
-
-    pub fn cancel_clear_text(&mut self) { self.clear_type_animation.take().map(|timer| timer.cancel()); }
-
-    // TODO: general animation system
-    pub fn fade_perfect_clear_text(&mut self, ctx: &Context<Board>) {
-        let link = ctx.link().clone();
-        self.perfect_clear_animation = Some(Interval::new(20, move || {
-            link.send_message(BoardMessage::FadePerfectClear);
-        }));
-    }
-
-    pub fn cancel_perfect_clear_text(&mut self) { self.perfect_clear_animation.take().map(|timer| timer.cancel()); }
 }
 
 pub struct Board {
@@ -104,20 +102,22 @@ pub struct Board {
     game_stats_drawer: GameStatsDrawer,
 
     timers: BoardTimers,
+    animation_state: AnimationState,
     prev_lock_delay_actions: usize,
 }
 
 impl Board {
     fn reset(&mut self, ctx: &Context<Board>) {
         self.bag = SingleBag::new();
-        
+
         let props = ctx.props();
         self.field = DefaultField::new(props.width, props.height, props.hidden, props.queue_len, &mut self.bag);
         self.input_states = InputStates::new();
 
         self.game_stats_drawer = GameStatsDrawer::new();
 
-        self.timers = BoardTimers::new();
+        self.animation_state = AnimationState::new();
+        self.timers = BoardTimers::new(ctx, self.animation_state.get_active());
         self.timers.reset_gravity(ctx);
     }
 }
@@ -130,6 +130,7 @@ impl Component for Board {
         let mut bag = SingleBag::new();
         let props = ctx.props();
         let field = DefaultField::new(props.width, props.height, props.hidden, props.queue_len, &mut bag);
+        let animation_state = AnimationState::new();
 
         Board {
             bag,
@@ -139,7 +140,8 @@ impl Component for Board {
             canvas_renderer: CanvasRenderer::new(),
             game_stats_drawer: GameStatsDrawer::new(),
 
-            timers: BoardTimers::new(),
+            timers: BoardTimers::new(ctx, animation_state.get_active()),
+            animation_state,
             prev_lock_delay_actions: 0,
         }
     }
@@ -219,7 +221,7 @@ impl Component for Board {
                 self.timers.cancel_lock_delay();
                 self.prev_lock_delay_actions = 0;
                 self.game_stats_drawer
-                    .set_clear_type(ctx, &mut self.timers, self.field.hard_drop(&mut self.bag));
+                    .set_clear_type(&mut self.animation_state, self.field.hard_drop(&mut self.bag));
                 true
             }
             // only lock if the piece is still touching the stack
@@ -230,15 +232,9 @@ impl Component for Board {
                     false
                 }
             }
-            _ => true,
+            BoardMessage::TickAnimation(animation) => to_true(self.animation_state.tick(ctx, animation)),
+            BoardMessage::StopAnimation(animation) => to_false(self.animation_state.stop_animation(animation)),
         };
-
-        // messages for animations
-        match msg {
-            BoardMessage::FadeClearType => self.game_stats_drawer.fade_clear_type(&mut self.timers),
-            BoardMessage::FadePerfectClear => self.game_stats_drawer.fade_perfect_clear(&mut self.timers),
-            _ => {}
-        }
 
         // activate lock delay after the piece touches the stack while falling
         match msg {
@@ -277,7 +273,7 @@ impl Component for Board {
                     <div class="hold-piece">
                         { self.canvas_renderer.hold_piece_canvas() }
                     </div>
-                    { self.game_stats_drawer.game_stats_html() }
+                    { self.game_stats_drawer.game_stats_html(&self.animation_state) }
                 </div>
                 <div class="field">
                     { self.canvas_renderer.field_canvas(&self.field, ctx) }

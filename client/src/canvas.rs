@@ -19,13 +19,13 @@ pub struct CanvasRenderer {
     asset_cache: HashMap<SrsTetromino, HtmlImageElement>, // cache image assets for performance
 }
 
-pub const SQUARE_MUL: usize = 32; // the size of each square on the field
+pub const SQUARE_MUL: usize = 36; // the size of each square on the field
 
 pub const LABEL_HEIGHT: usize = 30; // height of "hold" and "next" labels
-pub const PIECE_HEIGHT: usize = SQUARE_MUL * 2 + 36; // height of hold/queue piece
+pub const PIECE_HEIGHT: usize = SQUARE_MUL * 3; // height of hold/queue piece
 
-pub const SIDE_BAR_WIDTH: usize = 170; // width of hold/queue panels
-pub const SIDE_BAR_PADDING: usize = 6; // bottom padding of hold/queue panels
+pub const SIDE_BAR_WIDTH: usize = SQUARE_MUL * 5; // width of hold/queue panels
+pub const SIDE_BAR_PADDING: usize = SQUARE_MUL / 6; // bottom padding of hold/queue panels
 
 impl CanvasRenderer {
     pub fn new() -> Self {
