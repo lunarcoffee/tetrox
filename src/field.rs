@@ -341,9 +341,11 @@ impl<P: PieceKind> DefaultField<P> {
     }
 
     // swap the current piece with the shadow piece
-    pub fn project_down(&mut self, is_hard_drop: bool) -> bool {
+    pub fn project_down(&mut self) -> bool {
         let projected = self.cur_piece.projected_down(&self);
-        self.last_move_rotated = self.last_move_rotated && is_hard_drop; // last move before hard drop
+
+        // make soft drop reset the last move rotation flag but not hard drop or soft drop without movement 
+        self.last_move_rotated &= self.cur_piece.coords() == projected.coords();
         self.try_update_cur_piece(projected)
     }
 
@@ -351,7 +353,7 @@ impl<P: PieceKind> DefaultField<P> {
         self.hold_swapped = false;
         self.lock_delay_actions = None;
 
-        self.project_down(true);
+        self.project_down();
         let clear_type = self.clear_lines();
         self.last_cur_piece_kick = None;
         self.try_spawn_no_erase(bag);

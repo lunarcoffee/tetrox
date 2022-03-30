@@ -21,17 +21,25 @@ pub enum BoardMessage {
     MoveRight,
     MoveDown,
 
+    // repeating movement messages
     MoveLeftAutoRepeat,
     MoveRightAutoRepeat,
     DasLeft,
     DasRight,
     ProjectDown,
 
+    RotateCw,
+    RotateCcw,
+    Rotate180,
+
+    SwapHoldPiece,
     HardDrop,
     LockDelayDrop,
 
     TickAnimation(Animation),
     StopAnimation(Animation),
+
+    Reset,
 }
 
 #[derive(Clone, PartialEq, Properties)]
@@ -88,9 +96,7 @@ impl BoardTimers {
 }
 
 impl Drop for BoardTimers {
-    fn drop(&mut self) {
-        self.animation_loop.take().unwrap().cancel();
-    }
+    fn drop(&mut self) { self.animation_loop.take().unwrap().cancel(); }
 }
 
 pub struct Board {
@@ -99,7 +105,7 @@ pub struct Board {
     input_states: InputStates,
 
     canvas_renderer: CanvasRenderer,
-    game_stats_drawer: GameStatsDrawer,
+    game_stats: GameStatsDrawer,
 
     timers: BoardTimers,
     animation_state: AnimationState,
@@ -107,135 +113,38 @@ pub struct Board {
 }
 
 impl Board {
-    fn reset(&mut self, ctx: &Context<Board>) {
-        self.bag = SingleBag::new();
-
-        let props = ctx.props();
-        self.field = DefaultField::new(props.width, props.height, props.hidden, props.queue_len, &mut self.bag);
-        self.input_states = InputStates::new();
-
-        self.game_stats_drawer = GameStatsDrawer::new();
-
-        self.animation_state = AnimationState::new();
-        self.timers = BoardTimers::new(ctx, self.animation_state.get_active());
-        self.timers.reset_gravity(ctx);
-    }
-}
-
-impl Component for Board {
-    type Message = BoardMessage;
-    type Properties = BoardProps;
-
-    fn create(ctx: &Context<Self>) -> Self {
-        let mut bag = SingleBag::new();
-        let props = ctx.props();
-        let field = DefaultField::new(props.width, props.height, props.hidden, props.queue_len, &mut bag);
-        let animation_state = AnimationState::new();
-
-        Board {
-            bag,
-            field,
-            input_states: InputStates::new(),
-
-            canvas_renderer: CanvasRenderer::new(),
-            game_stats_drawer: GameStatsDrawer::new(),
-
-            timers: BoardTimers::new(ctx, animation_state.get_active()),
-            animation_state,
-            prev_lock_delay_actions: 0,
+    fn process_key_press(&mut self, ctx: &Context<Self>, e: &KeyboardEvent) -> bool {
+        let inputs = &mut self.input_states;
+        match &e.key().to_lowercase()[..] {
+            "arrowleft" => inputs.left_pressed(ctx),
+            "arrowright" => inputs.right_pressed(ctx),
+            "arrowdown" => inputs.soft_drop_pressed(ctx),
+            "arrowup" => inputs.set_pressed_msg(Input::RotateCw, ctx, BoardMessage::RotateCw),
+            "s" => inputs.set_pressed_msg(Input::RotateCcw, ctx, BoardMessage::RotateCcw),
+            "a" => inputs.set_pressed_msg(Input::Rotate180, ctx, BoardMessage::Rotate180),
+            "d" => ctx.link().send_message(BoardMessage::SwapHoldPiece),
+            " " => inputs.set_pressed_msg(Input::HardDrop, ctx, BoardMessage::HardDrop),
+            "`" => ctx.link().send_message(BoardMessage::Reset),
+            _ => return false,
         }
+        true
     }
 
-    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
-        // handle input suppression first
-        match msg {
-            BoardMessage::MoveRight | BoardMessage::DasRight => {
-                if self.input_states.is_pressed(Input::Left) {
-                    self.input_states.set_suppressed(Input::Left);
-                }
-            }
-            BoardMessage::MoveLeft | BoardMessage::DasLeft => {
-                if self.input_states.is_pressed(Input::Right) {
-                    self.input_states.set_suppressed(Input::Right);
-                }
-            }
-            _ => {}
-        }
+    fn process_key_release(&mut self, e: &KeyboardEvent) -> bool {
+        self.input_states.set_released(match &e.key().to_lowercase()[..] {
+            "arrowleft" => Input::Left,
+            "arrowright" => Input::Right,
+            "arrowdown" => Input::SoftDrop,
+            "arrowup" => Input::RotateCw,
+            "s" => Input::RotateCcw,
+            "a" => Input::Rotate180,
+            " " => Input::HardDrop,
+            _ => return false,
+        });
+        false
+    }
 
-        let to_true = |_| true;
-        let to_false = |_| false;
-
-        // primary input action
-        let update = match msg {
-            BoardMessage::KeyPressed(ref e) => match &e.key().to_lowercase()[..] {
-                "arrowleft" => to_true(self.input_states.left_pressed(ctx)),
-                "arrowright" => to_true(self.input_states.right_pressed(ctx)),
-                "arrowdown" => to_true(self.input_states.soft_drop_pressed(ctx)),
-                "arrowup" => to_true(
-                    self.input_states
-                        .set_pressed_with_action(Input::RotateCw, || self.field.try_rotate_cw(&SrsKickTable)),
-                ),
-                "s" => to_true(
-                    self.input_states
-                        .set_pressed_with_action(Input::RotateCcw, || self.field.try_rotate_ccw(&SrsKickTable)),
-                ),
-                "a" => to_true(
-                    self.input_states
-                        .set_pressed_with_action(Input::Rotate180, || self.field.try_rotate_180(&Tetrio180KickTable)),
-                ),
-                "d" => {
-                    let result = self.field.swap_hold_piece(&mut self.bag);
-                    if result {
-                        self.timers.cancel_lock_delay();
-                    }
-                    result
-                }
-                " " => to_true(self.input_states.set_pressed_with_action(Input::HardDrop, || {
-                    to_true(ctx.link().send_message(BoardMessage::HardDrop))
-                })),
-                "`" => to_true(self.reset(ctx)),
-                _ => return false,
-            },
-            BoardMessage::KeyReleased(ref e) => {
-                to_false(self.input_states.set_released(match &e.key().to_lowercase()[..] {
-                    "arrowleft" => Input::Left,
-                    "arrowright" => Input::Right,
-                    "arrowdown" => Input::SoftDrop,
-                    "arrowup" => Input::RotateCw,
-                    "s" => Input::RotateCcw,
-                    "a" => Input::Rotate180,
-                    " " => Input::HardDrop,
-                    _ => return false,
-                }))
-            }
-            BoardMessage::MoveLeft => self.field.try_shift(0, -1),
-            BoardMessage::MoveRight => self.field.try_shift(0, 1),
-            BoardMessage::DasLeft => to_true(while self.field.try_shift(0, -1) {}),
-            BoardMessage::DasRight => to_true(while self.field.try_shift(0, 1) {}),
-            BoardMessage::MoveDown => self.field.try_shift(1, 0),
-            BoardMessage::MoveLeftAutoRepeat => to_true(self.input_states.left_held(ctx)),
-            BoardMessage::MoveRightAutoRepeat => to_true(self.input_states.right_held(ctx)),
-            BoardMessage::ProjectDown => self.field.project_down(false),
-            BoardMessage::HardDrop => {
-                self.timers.reset_gravity(ctx);
-                self.timers.cancel_lock_delay();
-                self.prev_lock_delay_actions = 0;
-                self.game_stats_drawer
-                    .set_clear_type(&mut self.animation_state, self.field.hard_drop(&mut self.bag));
-                true
-            }
-            // only lock if the piece is still touching the stack
-            BoardMessage::LockDelayDrop => {
-                if self.field.cur_piece_cannot_move_down() {
-                    to_true(ctx.link().send_message(BoardMessage::HardDrop))
-                } else {
-                    false
-                }
-            }
-            BoardMessage::TickAnimation(animation) => to_true(self.animation_state.tick(ctx, animation)),
-            BoardMessage::StopAnimation(animation) => to_false(self.animation_state.stop_animation(animation)),
-        };
-
+    fn process_lock_delay(&mut self, ctx: &Context<Self>, msg: BoardMessage) {
         // activate lock delay after the piece touches the stack while falling
         match msg {
             BoardMessage::MoveLeft | BoardMessage::MoveRight | BoardMessage::MoveDown | BoardMessage::ProjectDown => {
@@ -262,6 +171,120 @@ impl Component for Board {
                 }
             }
         }
+    }
+
+    fn reset(&mut self, ctx: &Context<Board>) {
+        self.bag = SingleBag::new();
+
+        let props = ctx.props();
+        self.field = DefaultField::new(props.width, props.height, props.hidden, props.queue_len, &mut self.bag);
+        self.input_states = InputStates::new();
+
+        self.game_stats = GameStatsDrawer::new();
+
+        self.animation_state = AnimationState::new();
+        self.timers = BoardTimers::new(ctx, self.animation_state.get_active());
+        self.timers.reset_gravity(ctx);
+    }
+}
+
+impl Component for Board {
+    type Message = BoardMessage;
+    type Properties = BoardProps;
+
+    fn create(ctx: &Context<Self>) -> Self {
+        let mut bag = SingleBag::new();
+        let props = ctx.props();
+        let field = DefaultField::new(props.width, props.height, props.hidden, props.queue_len, &mut bag);
+        let animation_state = AnimationState::new();
+
+        Board {
+            bag,
+            field,
+            input_states: InputStates::new(),
+
+            canvas_renderer: CanvasRenderer::new(),
+            game_stats: GameStatsDrawer::new(),
+
+            timers: BoardTimers::new(ctx, animation_state.get_active()),
+            animation_state,
+            prev_lock_delay_actions: 0,
+        }
+    }
+
+    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
+        // handle input suppression first
+        match msg {
+            BoardMessage::MoveRight | BoardMessage::DasRight if self.input_states.is_pressed(Input::Left) => {
+                self.input_states.set_suppressed(Input::Left)
+            }
+            BoardMessage::MoveLeft | BoardMessage::DasLeft if self.input_states.is_pressed(Input::Right) => {
+                self.input_states.set_suppressed(Input::Right);
+            }
+            _ => {}
+        }
+
+        match msg {
+            BoardMessage::KeyPressed(ref e) => return self.process_key_press(ctx, e),
+            BoardMessage::KeyReleased(ref e) => return self.process_key_release(e),
+            _ => {}
+        };
+
+        // avoids clutter from making every match arm a block with `true` or `false` at the end
+        let to_true = |_| true;
+        let to_false = |_| false;
+
+        // action messages
+        let update = match msg {
+            BoardMessage::MoveLeft => self.field.try_shift(0, -1),
+            BoardMessage::MoveRight => self.field.try_shift(0, 1),
+            BoardMessage::MoveDown => self.field.try_shift(1, 0),
+
+            BoardMessage::MoveLeftAutoRepeat => to_true(self.input_states.left_held(ctx)),
+            BoardMessage::MoveRightAutoRepeat => to_true(self.input_states.right_held(ctx)),
+            BoardMessage::DasLeft => to_true(while self.field.try_shift(0, -1) {}),
+            BoardMessage::DasRight => to_true(while self.field.try_shift(0, 1) {}),
+            BoardMessage::ProjectDown => self.field.project_down(),
+
+            BoardMessage::RotateCw => self.field.try_rotate_cw(&SrsKickTable),
+            BoardMessage::RotateCcw => self.field.try_rotate_ccw(&SrsKickTable),
+            BoardMessage::Rotate180 => self.field.try_rotate_180(&Tetrio180KickTable),
+
+            BoardMessage::SwapHoldPiece => {
+                let result = self.field.swap_hold_piece(&mut self.bag);
+                if result {
+                    self.timers.cancel_lock_delay();
+                }
+                result
+            }
+            BoardMessage::HardDrop => {
+                self.timers.reset_gravity(ctx);
+                self.timers.cancel_lock_delay();
+                self.prev_lock_delay_actions = 0;
+
+                let clear_type = self.field.hard_drop(&mut self.bag);
+                self.game_stats.set_clear_type(&mut self.animation_state, clear_type);
+
+                true
+            }
+            BoardMessage::LockDelayDrop => {
+                // only lock if the piece is still touching the stack
+                let touching_stack = self.field.cur_piece_cannot_move_down();
+                if touching_stack {
+                    ctx.link().send_message(BoardMessage::HardDrop);
+                }
+                touching_stack
+            }
+
+            BoardMessage::TickAnimation(animation) => to_true(self.animation_state.tick(ctx, animation)),
+            BoardMessage::StopAnimation(animation) => to_false(self.animation_state.stop_animation(animation)),
+
+            BoardMessage::Reset => to_true(self.reset(ctx)),
+            _ => false,
+        };
+
+        // process lock delay after movement actions (which may affect it)
+        self.process_lock_delay(ctx, msg);
 
         update
     }
@@ -273,7 +296,7 @@ impl Component for Board {
                     <div class="hold-piece">
                         { self.canvas_renderer.hold_piece_canvas() }
                     </div>
-                    { self.game_stats_drawer.game_stats_html(&self.animation_state) }
+                    { self.game_stats.get_html(&self.animation_state) }
                 </div>
                 <div class="field">
                     { self.canvas_renderer.field_canvas(&self.field, ctx) }

@@ -10,14 +10,11 @@ use crate::board::{Board, BoardMessage};
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Animation {
-    LineClearTextFade,
-    LineClearTextExpand,
-    PerfectClearTextFade,
-    PerfectClearTextExpand,
+    LineClearText,
+    PerfectClearText,
 }
 
 pub enum AnimationData {
-    Float(f64),
     Float2(f64, f64),
 }
 

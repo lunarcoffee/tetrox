@@ -62,11 +62,11 @@ impl InputStates {
     fn set_pressed(&mut self, input: Input) { self.set_state(input, InputState::Pressed); }
 
     // this acts as a guard to make sure repeated inputs don't trigger additional actions once an input is pressed
-    pub fn set_pressed_with_action(&mut self, input: Input, action: impl FnOnce() -> bool) {
+    pub fn set_pressed_msg(&mut self, input: Input, ctx: &Context<Board>, message: BoardMessage) {
         let input_down = self.is_pressed(input);
         if !input_down {
             self.set_pressed(input);
-            action();
+            ctx.link().send_message(message);
         }
     }
 

@@ -14,9 +14,9 @@ impl GameStatsDrawer {
         }
     }
 
-    pub fn game_stats_html(&self, animation_state: &AnimationState) -> Html {
+    pub fn get_html(&self, animation_state: &AnimationState) -> Html {
         let (line_clear_text_opacity, line_clear_letter_spacing) = animation_state
-            .get_state(Animation::LineClearTextFade)
+            .get_state(Animation::LineClearText)
             .and_then(|d| d.extract_float2())
             .unwrap_or((1.0, 0.1));
 
@@ -25,8 +25,9 @@ impl GameStatsDrawer {
             line_clear_text_opacity, line_clear_letter_spacing
         );
 
+        // TODO: make a helper that encapsulates this
         let (perfect_clear_text_opacity, perfect_clear_letter_spacing) = animation_state
-            .get_state(Animation::PerfectClearTextFade)
+            .get_state(Animation::PerfectClearText)
             .and_then(|d| d.extract_float2())
             .unwrap_or((0.0, 0.1));
 
@@ -56,10 +57,10 @@ impl GameStatsDrawer {
             let n_text = ["", "single ", "double ", "triple ", "quad "][n_lines];
 
             self.line_clear_text = format!("{}{}{}", mini, spin, n_text).trim().to_string();
-            Self::register_text_animation(animation_state, Animation::LineClearTextFade);
+            Self::register_text_animation(animation_state, Animation::LineClearText);
 
             if clear_type.is_perfect_clear() {
-                Self::register_text_animation(animation_state, Animation::PerfectClearTextFade);
+                Self::register_text_animation(animation_state, Animation::PerfectClearText);
             }
         }
     }
