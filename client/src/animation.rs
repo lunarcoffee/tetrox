@@ -11,11 +11,23 @@ use crate::board::{Board, BoardMessage};
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Animation {
     LineClearTextFade,
+    LineClearTextExpand,
     PerfectClearTextFade,
+    PerfectClearTextExpand,
 }
 
 pub enum AnimationData {
     Float(f64),
+    Float2(f64, f64),
+}
+
+impl AnimationData {
+    pub fn extract_float2(&self) -> Option<(f64, f64)> {
+        match self {
+            AnimationData::Float2(a, b) => Some((*a, *b)),
+            _ => None,
+        }
+    }
 }
 
 // if `None` is returned, the animation will be stopped

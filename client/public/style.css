@@ -4,12 +4,19 @@ body {
     background-attachment: fixed;
 }
 
+/* styles */
+
+.bold {
+    font-weight: bold;
+}
+
+/* elements */
+
 .loading-text {
     color: white;
 
     font-size: 3em;
     font-family: "IBM Plex Sans";
-    font-weight: bold;
 
     text-align: center;
     margin-top: 48vh;
@@ -54,7 +61,7 @@ body {
     font-family: "IBM Plex Sans";
     direction: rtl;
 
-    margin-right: -6px;
+    /* margin-right: -6px; */
     margin-bottom: -0.7em;
 }
 

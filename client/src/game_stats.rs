@@ -15,24 +15,32 @@ impl GameStatsDrawer {
     }
 
     pub fn game_stats_html(&self, animation_state: &AnimationState) -> Html {
-        let line_clear_text_opacity = animation_state
+        let (line_clear_text_opacity, line_clear_letter_spacing) = animation_state
             .get_state(Animation::LineClearTextFade)
-            .map(|AnimationData::Float(o)| *o)
-            .unwrap_or(1.0);
+            .and_then(|d| d.extract_float2())
+            .unwrap_or((1.0, 0.1));
 
-        let perfect_clear_text_opacity = animation_state
+        let line_clear_text_style = format!(
+            "opacity: {}; letter-spacing: {}rem;",
+            line_clear_text_opacity, line_clear_letter_spacing
+        );
+
+        let (perfect_clear_text_opacity, perfect_clear_letter_spacing) = animation_state
             .get_state(Animation::PerfectClearTextFade)
-            .map(|AnimationData::Float(o)| *o)
-            .unwrap_or(0.0);
+            .and_then(|d| d.extract_float2())
+            .unwrap_or((0.0, 0.1));
+
+        let perfect_clear_text_style = format!(
+            "opacity: {}; letter-spacing: {}rem;",
+            perfect_clear_text_opacity, perfect_clear_letter_spacing
+        );
 
         html! {
             <div class="game-stats">
-                <p class="game-stats-clear-text"
-                    style={ format!("opacity: {};", line_clear_text_opacity) }>
+                <p class="game-stats-clear-text" style={ line_clear_text_style }>
                     { &self.line_clear_text }
                 </p>
-                <p class="game-stats-clear-text"
-                    style={ format!("opacity: {};", perfect_clear_text_opacity) }>
+                <p class="game-stats-clear-text bold" style={ perfect_clear_text_style }>
                     { "perfect clear" }
                 </p>
             </div>
@@ -48,22 +56,30 @@ impl GameStatsDrawer {
             let n_text = ["", "single ", "double ", "triple ", "quad "][n_lines];
 
             self.line_clear_text = format!("{}{}{}", mini, spin, n_text).trim().to_string();
-            Self::register_fade_text_animation(animation_state, Animation::LineClearTextFade);
+            Self::register_text_animation(animation_state, Animation::LineClearTextFade);
 
             if clear_type.is_perfect_clear() {
-                Self::register_fade_text_animation(animation_state, Animation::PerfectClearTextFade);
+                Self::register_text_animation(animation_state, Animation::PerfectClearTextFade);
             }
         }
     }
 
-    fn register_fade_text_animation(animation_state: &mut AnimationState, animation: Animation) {
-        animation_state.set_state(animation, AnimationData::Float(1.0));
-        animation_state.set_updater(animation, Self::fade_animation_updater);
+    fn register_text_animation(animation_state: &mut AnimationState, animation: Animation) {
+        animation_state.set_state(animation, AnimationData::Float2(1.0, 0.1));
+        animation_state.set_updater(animation, Self::text_animation_updater);
         animation_state.start_animation(animation);
     }
 
-    // accelerating fade animation
-    fn fade_animation_updater(AnimationData::Float(opacity): &AnimationData) -> Option<AnimationData> {
-        (*opacity > 0.0).then(|| AnimationData::Float(opacity * (opacity * (1.0 - 1e-5)).powf(0.15)))
+    // accelerating fade animation and decelerating expand animation
+    fn text_animation_updater(data: &AnimationData) -> Option<AnimationData> {
+        match data {
+            AnimationData::Float2(opacity, letter_spacing) => (*opacity > 0.0).then(|| {
+                AnimationData::Float2(
+                    opacity * (opacity * (1.0 - 1e-5)).powf(0.15),
+                    letter_spacing + 5e-4 * (1.0 / letter_spacing),
+                )
+            }),
+            _ => None,
+        }
     }
 }
