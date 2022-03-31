@@ -33,37 +33,43 @@ body {
 
 .content {
     height: 100vh;
-    width: 78vw;
+    width: 68vw;
 
-    margin-left: 22vw;
-
-    display: inline-flex;
-    flex-direction: row;
-    align-items: flex-start;
-    justify-content: space-between;
+    margin: auto;
 }
 
 .config-panel {
     color: #ccc;
+    background: linear-gradient(90deg, transparent 0%, #00000080 100%);
 
     justify-self: flex-end;
     text-align: right;
 
-    margin: 32px 32px 32px 5vw;
+    padding: 12px 28px 28px 5vw;
+    width: 16vw;
+    height: calc(100vh - 40px);
+
+    position: fixed;
+    top: 0;
+    right: 0;
 }
 
 .config-heading {
-    margin: -4px 0 18px 0;
-    font-size: 1.7em;
+    color: #b8b4f1;
+
+    font-family: "Fira Sans";
+    font-size: 1.5em;
     font-weight: bold;
+
+    margin: 14px 0;
 }
 
 .config-option-label {
     margin: 0;
 }
 
-.config-panel>select {
-    margin: 4px 0 12px 0;
+.config-panel>.config-option>select {
+    margin: 6px 0 12px 0;
 }
 
 .game {
@@ -78,8 +84,6 @@ body {
     display: flex;
     flex-direction: column;
 }
-
-.hold-piece {}
 
 .hold-piece-canvas {
     margin-right: 30px;
@@ -122,8 +126,6 @@ body {
 .field-canvas:focus {
     outline: none;
 }
-
-.next-queue {}
 
 .next-queue-canvas {
     margin-left: 30px;
