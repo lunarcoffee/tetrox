@@ -5,7 +5,10 @@ use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use yew::{html::Scope, Context};
 
-use crate::board::{Board, BoardMessage};
+use crate::{
+    board::{Board, BoardMessage},
+    config::ReadOnlyConfig,
+};
 
 // timeout for das, intervals for arr and soft dropping
 enum MoveTimer {
@@ -37,18 +40,20 @@ pub enum InputState {
 pub struct InputStates {
     states: Rc<RefCell<HashMap<Input, InputState>>>,
     timers: Vec<(Input, MoveTimer)>,
+
+    config: ReadOnlyConfig,
 }
 
-// das, arr, sdr in milliseconds
-pub const DELAYED_AUTO_SHIFT: u32 = 120;
-pub const AUTO_REPEAT_RATE: u32 = 0;
-pub const SOFT_DROP_RATE: u32 = 0;
-
 impl InputStates {
-    pub fn new() -> Self {
+    pub fn new(config: ReadOnlyConfig) -> Self {
         let map = Input::iter().map(|input| (input, InputState::Released)).collect();
         let states = Rc::new(RefCell::new(map));
-        InputStates { states, timers: vec![] }
+
+        InputStates {
+            states,
+            timers: vec![],
+            config,
+        }
     }
 
     fn get_state(&mut self, input: Input) -> InputState { *self.states.clone().borrow().get(&input).unwrap() }
@@ -95,7 +100,7 @@ impl InputStates {
             let link = ctx.link().clone();
             link.send_message(BoardMessage::MoveLeft);
 
-            let timeout = Timeout::new(DELAYED_AUTO_SHIFT, move || {
+            let timeout = Timeout::new(self.config.delayed_auto_shift, move || {
                 link.send_message(BoardMessage::MoveLeftAutoRepeat);
             });
             self.timers.push((Input::Left, MoveTimer::Timeout(timeout)));
@@ -110,7 +115,7 @@ impl InputStates {
             let link = ctx.link().clone();
             link.send_message(BoardMessage::MoveRight);
 
-            let timeout = Timeout::new(DELAYED_AUTO_SHIFT, move || {
+            let timeout = Timeout::new(self.config.delayed_auto_shift, move || {
                 link.send_message(BoardMessage::MoveRightAutoRepeat);
             });
             self.timers.push((Input::Right, MoveTimer::Timeout(timeout)));
@@ -119,47 +124,53 @@ impl InputStates {
 
     // keep shifting down while the soft drop input is pressed
     pub fn soft_drop_pressed(&mut self, ctx: &Context<Board>) {
+        let soft_drop_rate = self.config.soft_drop_rate;
+
         let soft_drop_down = self.is_pressed(Input::SoftDrop);
         if !soft_drop_down {
             self.set_pressed(Input::SoftDrop);
 
             let link = ctx.link().clone();
             let action = move || {
-                Self::send_message_or_if_zero(&link, SOFT_DROP_RATE, BoardMessage::ProjectDown, BoardMessage::MoveDown)
+                Self::send_message_or_if_zero(&link, soft_drop_rate, BoardMessage::ProjectDown, BoardMessage::MoveDown)
             };
             action();
 
-            let interval = Interval::new(SOFT_DROP_RATE, action);
+            let interval = Interval::new(soft_drop_rate, action);
             self.timers.push((Input::SoftDrop, MoveTimer::Interval(interval)));
         }
     }
 
     // keep shifting left while the left input is pressed
     pub fn left_held(&mut self, ctx: &Context<Board>) {
+        let auto_repeat_rate = self.config.auto_repeat_rate;
+
         let states = self.states.clone();
         let link = ctx.link().clone();
         let action = move || {
             if states.borrow().get(&Input::Left).unwrap() == &InputState::Pressed {
-                Self::send_message_or_if_zero(&link, AUTO_REPEAT_RATE, BoardMessage::DasLeft, BoardMessage::MoveLeft)
+                Self::send_message_or_if_zero(&link, auto_repeat_rate, BoardMessage::DasLeft, BoardMessage::MoveLeft)
             }
         };
         action();
 
-        let interval = Interval::new(AUTO_REPEAT_RATE, action);
+        let interval = Interval::new(auto_repeat_rate, action);
         self.timers.push((Input::Left, MoveTimer::Interval(interval)));
     }
 
     pub fn right_held(&mut self, ctx: &Context<Board>) {
+        let auto_repeat_rate = self.config.auto_repeat_rate;
+
         let states = self.states.clone();
         let link = ctx.link().clone();
         let action = move || {
             if states.borrow().get(&Input::Right).unwrap() == &InputState::Pressed {
-                Self::send_message_or_if_zero(&link, AUTO_REPEAT_RATE, BoardMessage::DasRight, BoardMessage::MoveRight)
+                Self::send_message_or_if_zero(&link, auto_repeat_rate, BoardMessage::DasRight, BoardMessage::MoveRight)
             }
         };
         action();
 
-        let interval = Interval::new(AUTO_REPEAT_RATE, action);
+        let interval = Interval::new(auto_repeat_rate, action);
         self.timers.push((Input::Right, MoveTimer::Interval(interval)));
     }
 
@@ -185,4 +196,6 @@ impl InputStates {
             _ => None,
         }
     }
+
+    pub fn update_config(&mut self, config: ReadOnlyConfig) { self.config = config; }
 }

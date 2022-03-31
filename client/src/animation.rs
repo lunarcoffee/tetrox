@@ -19,10 +19,10 @@ pub enum AnimationData {
 }
 
 impl AnimationData {
-    pub fn extract_float2(&self) -> Option<(f64, f64)> {
+    pub fn extract_float2(&self) -> (f64, f64) {
         match self {
-            AnimationData::Float2(a, b) => Some((*a, *b)),
-            _ => None,
+            AnimationData::Float2(a, b) => (*a, *b),
+            _ => panic!("not float2"),
         }
     }
 }
@@ -51,6 +51,15 @@ impl AnimationState {
 
     // gets data associated with an animation (e.g element opacity)
     pub fn get_state(&self, animation: Animation) -> Option<&AnimationData> { self.animation_state.get(&animation) }
+
+    pub fn extract_state<T>(
+        &self,
+        animation: Animation,
+        extract_func: impl FnOnce(&AnimationData) -> T,
+        default: T,
+    ) -> T {
+        self.get_state(animation).map(|a| extract_func(a)).unwrap_or(default)
+    }
 
     pub fn set_state(&mut self, animation: Animation, data: AnimationData) {
         self.animation_state.insert(animation, data);

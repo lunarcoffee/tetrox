@@ -7,9 +7,9 @@ use tetrox::{
 };
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, HtmlImageElement};
-use yew::{html, Context, Html, NodeRef};
+use yew::{html, Html, NodeRef};
 
-use crate::board::{Board, BoardMessage};
+use crate::config::ReadOnlyConfig;
 
 pub struct CanvasRenderer {
     hold_piece_canvas: NodeRef,
@@ -17,6 +17,8 @@ pub struct CanvasRenderer {
     next_queue_canvas: NodeRef,
 
     asset_cache: HashMap<SrsTetromino, HtmlImageElement>, // cache image assets for performance
+
+    config: ReadOnlyConfig,
 }
 
 pub const SQUARE_MUL: usize = 36; // the size of each square on the field
@@ -28,14 +30,18 @@ pub const SIDE_BAR_WIDTH: usize = SQUARE_MUL * 5; // width of hold/queue panels
 pub const SIDE_BAR_PADDING: usize = SQUARE_MUL / 6; // bottom padding of hold/queue panels
 
 impl CanvasRenderer {
-    pub fn new() -> Self {
-        CanvasRenderer {
+    pub fn new(config: ReadOnlyConfig) -> Self {
+        let mut renderer = CanvasRenderer {
             hold_piece_canvas: NodeRef::default(),
             field_canvas: NodeRef::default(),
             next_queue_canvas: NodeRef::default(),
 
-            asset_cache: Self::populate_asset_cache(),
-        }
+            asset_cache: HashMap::new(),
+
+            config,
+        };
+        renderer.populate_asset_cache();
+        renderer
     }
 
     pub fn hold_piece_canvas(&self) -> Html {
@@ -48,19 +54,12 @@ impl CanvasRenderer {
         }
     }
 
-    pub fn field_canvas(&self, field: &DefaultField<SrsTetromino>, ctx: &Context<Board>) -> Html {
-        let link = ctx.link();
-        let key_pressed_callback = link.callback(|e| BoardMessage::KeyPressed(e));
-        let key_released_callback = link.callback(|e| BoardMessage::KeyReleased(e));
-
+    pub fn field_canvas(&self, field: &DefaultField<SrsTetromino>) -> Html {
         html! {
             <canvas ref={ self.field_canvas.clone() }
                     class="field-canvas"
                     // hide the hidden area of the board
                     style={ format!("margin-top: -{}px;", SQUARE_MUL * field.hidden()) }
-                    tabindex="0"
-                    onkeydown={ key_pressed_callback }
-                    onkeyup={ key_released_callback }
                     width={ (SQUARE_MUL * field.width()).to_string() }
                     height={ (SQUARE_MUL * field.height()).to_string() }>
             </canvas>
@@ -263,15 +262,17 @@ impl CanvasRenderer {
             .collect()
     }
 
-    fn populate_asset_cache() -> HashMap<SrsTetromino, HtmlImageElement> {
-        SrsTetromino::iter()
+    fn populate_asset_cache(&mut self) {
+        self.asset_cache = SrsTetromino::iter()
             .map(|kind| {
                 let field_square_mul = SQUARE_MUL as u32;
                 let image = HtmlImageElement::new_with_width_and_height(field_square_mul, field_square_mul).unwrap();
-                let asset_src = format!("assets/skins/{}/{}.png", crate::SKIN_NAME, kind.asset_name());
+                let asset_src = format!("assets/skins/{}/{}.png", self.config.skin_name, kind.asset_name());
                 image.set_src(&asset_src);
                 (kind, image)
             })
-            .collect()
+            .collect();
     }
+
+    pub fn update_config(&mut self, config: ReadOnlyConfig) { self.config = config; }
 }

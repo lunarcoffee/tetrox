@@ -4,6 +4,7 @@ use std::rc::Rc;
 
 use crate::animation::{Animation, AnimationState};
 use crate::canvas::CanvasRenderer;
+use crate::config::ReadOnlyConfig;
 use crate::game_stats::GameStatsDrawer;
 use crate::input::{Input, InputStates};
 use gloo_timers::callback::{Interval, Timeout};
@@ -11,7 +12,13 @@ use tetrox::{
     field::DefaultField,
     tetromino::{SingleBag, SrsKickTable, SrsTetromino, Tetrio180KickTable},
 };
-use yew::{html, Component, Context, Html, KeyboardEvent, Properties};
+use web_sys::HtmlElement;
+use yew::{html, Component, Context, Html, KeyboardEvent, NodeRef, Properties};
+
+#[derive(PartialEq, Properties)]
+pub struct BoardProps {
+    pub config: ReadOnlyConfig,
+}
 
 pub enum BoardMessage {
     KeyPressed(KeyboardEvent),
@@ -40,14 +47,6 @@ pub enum BoardMessage {
     StopAnimation(Animation),
 
     Reset,
-}
-
-#[derive(Clone, PartialEq, Properties)]
-pub struct BoardProps {
-    pub width: usize,
-    pub height: usize,
-    pub hidden: usize,
-    pub queue_len: usize,
 }
 
 pub struct BoardTimers {
@@ -108,8 +107,10 @@ pub struct Board {
     game_stats: GameStatsDrawer,
 
     timers: BoardTimers,
-    animation_state: AnimationState,
     prev_lock_delay_actions: usize,
+    animation_state: AnimationState,
+
+    game_div: NodeRef, // used to set focus after rendering
 }
 
 impl Board {
@@ -176,9 +177,15 @@ impl Board {
     fn reset(&mut self, ctx: &Context<Board>) {
         self.bag = SingleBag::new();
 
-        let props = ctx.props();
-        self.field = DefaultField::new(props.width, props.height, props.hidden, props.queue_len, &mut self.bag);
-        self.input_states = InputStates::new();
+        let config = &ctx.props().config;
+        self.field = DefaultField::new(
+            config.field_width,
+            config.field_height,
+            config.field_hidden,
+            config.queue_len,
+            &mut self.bag,
+        );
+        self.input_states = InputStates::new(config.clone());
 
         self.game_stats = GameStatsDrawer::new();
 
@@ -193,22 +200,31 @@ impl Component for Board {
     type Properties = BoardProps;
 
     fn create(ctx: &Context<Self>) -> Self {
+        let config = &ctx.props().config;
+
         let mut bag = SingleBag::new();
-        let props = ctx.props();
-        let field = DefaultField::new(props.width, props.height, props.hidden, props.queue_len, &mut bag);
+        let field = DefaultField::new(
+            config.field_width,
+            config.field_height,
+            config.field_hidden,
+            config.queue_len,
+            &mut bag,
+        );
         let animation_state = AnimationState::new();
 
         Board {
             bag,
             field,
-            input_states: InputStates::new(),
+            input_states: InputStates::new(config.clone()),
 
-            canvas_renderer: CanvasRenderer::new(),
+            canvas_renderer: CanvasRenderer::new(config.clone()),
             game_stats: GameStatsDrawer::new(),
 
             timers: BoardTimers::new(ctx, animation_state.get_active()),
             animation_state,
             prev_lock_delay_actions: 0,
+
+            game_div: NodeRef::default(),
         }
     }
 
@@ -289,9 +305,26 @@ impl Component for Board {
         update
     }
 
+    fn changed(&mut self, ctx: &Context<Self>) -> bool {
+        let config = &ctx.props().config;
+
+        self.input_states.update_config(config.clone()); // TODO: test this
+        self.canvas_renderer.update_config(config.clone());
+
+        true
+    }
+
     fn view(&self, ctx: &yew::Context<Self>) -> Html {
+        let link = ctx.link();
+        let key_pressed_callback = link.callback(|e| BoardMessage::KeyPressed(e));
+        let key_released_callback = link.callback(|e| BoardMessage::KeyReleased(e));
+
         html! {
-            <div class="game">
+            <div ref={ self.game_div.clone() }
+                 class="game"
+                 tabindex="0"
+                 onkeydown={ key_pressed_callback }
+                 onkeyup={ key_released_callback }>
                 <div class="field-left-panel">
                     <div class="hold-piece">
                         { self.canvas_renderer.hold_piece_canvas() }
@@ -299,7 +332,7 @@ impl Component for Board {
                     { self.game_stats.get_html(&self.animation_state) }
                 </div>
                 <div class="field">
-                    { self.canvas_renderer.field_canvas(&self.field, ctx) }
+                    { self.canvas_renderer.field_canvas(&self.field) }
                 </div>
                 <div class="next-queue">
                     { self.canvas_renderer.next_queue_canvas(&self.field) }
@@ -311,6 +344,7 @@ impl Component for Board {
     fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {
         if first_render {
             self.timers.reset_gravity(ctx);
+            self.game_div.cast::<HtmlElement>().unwrap().focus().unwrap();
         }
         self.canvas_renderer.draw_hold_piece(&self.field);
         self.canvas_renderer.draw_next_queue(&self.field, &mut self.bag);

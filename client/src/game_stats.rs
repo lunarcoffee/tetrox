@@ -15,21 +15,16 @@ impl GameStatsDrawer {
     }
 
     pub fn get_html(&self, animation_state: &AnimationState) -> Html {
-        let (line_clear_text_opacity, line_clear_letter_spacing) = animation_state
-            .get_state(Animation::LineClearText)
-            .and_then(|d| d.extract_float2())
-            .unwrap_or((1.0, 0.1));
+        let (line_clear_text_opacity, line_clear_letter_spacing) =
+            animation_state.extract_state(Animation::LineClearText, AnimationData::extract_float2, (1.0, 0.1));
 
         let line_clear_text_style = format!(
             "opacity: {}; letter-spacing: {}rem;",
             line_clear_text_opacity, line_clear_letter_spacing
         );
 
-        // TODO: make a helper that encapsulates this
-        let (perfect_clear_text_opacity, perfect_clear_letter_spacing) = animation_state
-            .get_state(Animation::PerfectClearText)
-            .and_then(|d| d.extract_float2())
-            .unwrap_or((0.0, 0.1));
+        let (perfect_clear_text_opacity, perfect_clear_letter_spacing) =
+            animation_state.extract_state(Animation::PerfectClearText, AnimationData::extract_float2, (0.0, 0.1));
 
         let perfect_clear_text_style = format!(
             "opacity: {}; letter-spacing: {}rem;",
