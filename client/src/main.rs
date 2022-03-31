@@ -24,10 +24,13 @@ struct AssetPreloaderProps {
 
 struct AssetPreloader {
     n_loaded: usize,
+
+    loaded_assets: Vec<HtmlImageElement>, // storing these so they don't get uncached after being dropped
     loaded_callback_closures: Vec<Closure<dyn Fn()>>, // storing these so they aren't dropped before being called
 }
 
-const SKIN_NAMES: &[&str] = &["tetrox", "gradient", "inset", "rounded", "solid"];
+// maybe dynamically determine these?
+pub const SKIN_NAMES: &[&str] = &["tetrox", "gradient", "inset", "rounded", "solid"];
 
 impl AssetPreloader {
     fn register_asset_load_callbacks(&mut self, ctx: &Context<Self>) {
@@ -41,6 +44,8 @@ impl AssetPreloader {
                 let loaded_callback = move || link.send_message(AssetLoaded);
                 let loaded_closure = Closure::wrap(Box::new(loaded_callback) as Box<dyn Fn()>);
                 image.set_onload(Some(loaded_closure.as_ref().unchecked_ref()));
+
+                self.loaded_assets.push(image);
                 self.loaded_callback_closures.push(loaded_closure);
             }
         }
@@ -54,6 +59,8 @@ impl Component for AssetPreloader {
     fn create(_ctx: &Context<Self>) -> Self {
         AssetPreloader {
             n_loaded: 0,
+
+            loaded_assets: vec![],
             loaded_callback_closures: vec![],
         }
     }

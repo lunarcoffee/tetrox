@@ -274,5 +274,11 @@ impl CanvasRenderer {
             .collect();
     }
 
-    pub fn update_config(&mut self, config: ReadOnlyConfig) { self.config = config; }
+    pub fn update_config(&mut self, config: ReadOnlyConfig) {
+        let skin_updated = self.config.skin_name != config.skin_name;
+        self.config = config;
+        if skin_updated {
+            self.populate_asset_cache();
+        }
+    }
 }

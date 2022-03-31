@@ -308,9 +308,17 @@ impl Component for Board {
     fn changed(&mut self, ctx: &Context<Self>) -> bool {
         let config = &ctx.props().config;
 
-        self.input_states.update_config(config.clone()); // TODO: test this
+        let field_changed = config.field_width != self.field.width()
+            || config.field_height != self.field.height()
+            || config.field_hidden != self.field.hidden()
+            || config.queue_len != self.field.queue_len();
+
+        self.input_states.update_config(config.clone());
         self.canvas_renderer.update_config(config.clone());
 
+        if field_changed {
+            self.reset(ctx);
+        }
         true
     }
 
