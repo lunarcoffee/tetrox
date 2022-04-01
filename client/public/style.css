@@ -12,6 +12,8 @@ body {
     padding: 0;
     margin: 0;
     border: none;
+
+    overflow: hidden;
 }
 
 /* styles */
@@ -20,12 +22,12 @@ body {
     font-weight: bold;
 }
 
-/* elements */
+/* elrements */
 
 .loading-text {
     color: white;
 
-    font-size: 3em;
+    font-size: 3rem;
 
     text-align: center;
     margin-top: 48vh;
@@ -45,7 +47,7 @@ body {
     justify-self: flex-end;
     text-align: right;
 
-    padding: 12px 28px 28px 5vw;
+    padding: 16px 28px 28px 5vw;
     width: 16vw;
     height: calc(100vh - 40px);
 
@@ -58,13 +60,14 @@ body {
     color: #b8b4f1;
 
     font-family: "Fira Sans";
-    font-size: 1.5em;
+    font-size: 1.15rem;
     font-weight: bold;
 
     margin: 14px 0;
 }
 
 .config-option-label {
+    font-size: 0.9rem;
     margin: 0;
 }
 
@@ -73,8 +76,9 @@ body {
 }
 
 .game {
-    padding-top: 130px;
     justify-content: center;
+    align-content: center;
+    align-self: center;
 
     display: flex;
     flex-direction: row;
@@ -104,10 +108,10 @@ body {
 .game-stats-clear-text {
     color: #ccc;
 
-    font-size: 1.8em;
+    font-size: 1.8rem;
     direction: rtl;
 
-    margin-bottom: -0.7em;
+    margin-bottom: -0.7rem;
 }
 
 .field {

@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 use crate::animation::{Animation, AnimationState};
-use crate::canvas::CanvasRenderer;
+use crate::canvas::{CanvasRenderer, self};
 use crate::config::ReadOnlyConfig;
 use crate::game_stats::GameStatsDrawer;
 use crate::input::{Input, InputStates};
@@ -52,14 +52,13 @@ pub enum BoardMessage {
 pub struct BoardTimers {
     gravity: Option<Interval>,
     lock_delay: Option<Timeout>,
-    animation_loop: Option<Interval>,
+    _animation_loop: Option<Interval>, // store so the loop is cancelled when this is dropped
+
+    config: ReadOnlyConfig,
 }
 
-const GRAVITY_DELAY: u32 = 1_000;
-const LOCK_DELAY: u32 = 500;
-
 impl BoardTimers {
-    fn new(ctx: &Context<Board>, animations: Rc<RefCell<HashSet<Animation>>>) -> Self {
+    fn new(ctx: &Context<Board>, animations: Rc<RefCell<HashSet<Animation>>>, config: ReadOnlyConfig) -> Self {
         // tick each animation once every frame at about 60 fps
         let link = ctx.link().clone();
         let animation_loop = Some(Interval::new(17, move || {
@@ -73,29 +72,27 @@ impl BoardTimers {
         BoardTimers {
             gravity: None,
             lock_delay: None,
-            animation_loop,
+            _animation_loop: animation_loop,
+
+            config,
         }
     }
 
     fn reset_gravity(&mut self, ctx: &Context<Board>) {
         let link = ctx.link().clone();
-        self.gravity = Some(Interval::new(GRAVITY_DELAY, move || {
+        self.gravity = Some(Interval::new(self.config.gravity_delay, move || {
             link.send_message(BoardMessage::MoveDown);
         }));
     }
 
     fn reset_lock_delay(&mut self, ctx: &Context<Board>) {
         let link = ctx.link().clone();
-        self.lock_delay = Some(Timeout::new(LOCK_DELAY, move || {
+        self.lock_delay = Some(Timeout::new(self.config.lock_delay, move || {
             link.send_message(BoardMessage::LockDelayDrop);
         }));
     }
 
     fn cancel_lock_delay(&mut self) { self.lock_delay.take().map(|timer| timer.cancel()); }
-}
-
-impl Drop for BoardTimers {
-    fn drop(&mut self) { self.animation_loop.take().unwrap().cancel(); }
 }
 
 pub struct Board {
@@ -111,6 +108,8 @@ pub struct Board {
     animation_state: AnimationState,
 
     game_div: NodeRef, // used to set focus after rendering
+
+    config: ReadOnlyConfig,
 }
 
 impl Board {
@@ -190,7 +189,7 @@ impl Board {
         self.game_stats = GameStatsDrawer::new();
 
         self.animation_state = AnimationState::new();
-        self.timers = BoardTimers::new(ctx, self.animation_state.get_active());
+        self.timers = BoardTimers::new(ctx, self.animation_state.get_active(), self.config.clone());
         self.timers.reset_gravity(ctx);
     }
 }
@@ -200,7 +199,7 @@ impl Component for Board {
     type Properties = BoardProps;
 
     fn create(ctx: &Context<Self>) -> Self {
-        let config = &ctx.props().config;
+        let config = ctx.props().config.clone();
 
         let mut bag = SingleBag::new();
         let field = DefaultField::new(
@@ -220,11 +219,13 @@ impl Component for Board {
             canvas_renderer: CanvasRenderer::new(config.clone()),
             game_stats: GameStatsDrawer::new(),
 
-            timers: BoardTimers::new(ctx, animation_state.get_active()),
+            timers: BoardTimers::new(ctx, animation_state.get_active(), config.clone()),
             animation_state,
             prev_lock_delay_actions: 0,
 
             game_div: NodeRef::default(),
+
+            config,
         }
     }
 
@@ -306,15 +307,19 @@ impl Component for Board {
     }
 
     fn changed(&mut self, ctx: &Context<Self>) -> bool {
-        let config = &ctx.props().config;
+        self.config = ctx.props().config.clone();
 
-        let field_changed = config.field_width != self.field.width()
-            || config.field_height != self.field.height()
-            || config.field_hidden != self.field.hidden()
-            || config.queue_len != self.field.queue_len();
+        let field_changed = self.config.field_width != self.field.width()
+            || self.config.field_height != self.field.height()
+            || self.config.field_hidden != self.field.hidden()
+            || self.config.queue_len != self.field.queue_len();
 
-        self.input_states.update_config(config.clone());
-        self.canvas_renderer.update_config(config.clone());
+        self.input_states.update_config(self.config.clone());
+        self.canvas_renderer.update_config(self.config.clone());
+        
+        self.timers = BoardTimers::new(ctx, self.animation_state.get_active(), self.config.clone());
+        self.timers.reset_gravity(ctx);
+        self.timers.reset_lock_delay(ctx);
 
         if field_changed {
             self.reset(ctx);
@@ -327,12 +332,20 @@ impl Component for Board {
         let key_pressed_callback = link.callback(|e| BoardMessage::KeyPressed(e));
         let key_released_callback = link.callback(|e| BoardMessage::KeyReleased(e));
 
+        let game_style = format!(
+            "transform: scale({}%); margin-top: {}px;",
+            self.config.field_zoom * 100.0,
+            130,
+            // 472 - ((self.config.field_hidden * canvas::SQUARE_MUL) as f64 * self.config.field_zoom) as i32,
+        );
+
         html! {
             <div ref={ self.game_div.clone() }
                  class="game"
                  tabindex="0"
                  onkeydown={ key_pressed_callback }
-                 onkeyup={ key_released_callback }>
+                 onkeyup={ key_released_callback }
+                 style={ game_style }>
                 <div class="field-left-panel">
                     <div class="hold-piece">
                         { self.canvas_renderer.hold_piece_canvas() }

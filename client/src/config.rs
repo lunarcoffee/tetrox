@@ -10,7 +10,7 @@ use yew::{html, Callback, Component, Context, Html};
 pub struct Config {
     // visual settings
     pub skin_name: String,
-    pub field_zoom: f64, // TODO
+    pub field_zoom: f64,
 
     // field property settings
     pub field_width: usize,
@@ -18,13 +18,17 @@ pub struct Config {
     pub field_hidden: usize,
     pub queue_len: usize,
 
-    // controls
-    // TODO
+    // gameplay
+    pub gravity_delay: u32,
+    pub lock_delay: u32,
 
     // handling
     pub delayed_auto_shift: u32,
     pub auto_repeat_rate: u32,
     pub soft_drop_rate: u32,
+
+    // controls
+    // TODO
 }
 
 impl Default for Config {
@@ -37,6 +41,9 @@ impl Default for Config {
             field_height: 40,
             field_hidden: 20,
             queue_len: 5,
+
+            gravity_delay: 1_000,
+            lock_delay: 500,
 
             delayed_auto_shift: 120,
             auto_repeat_rate: 0,
@@ -61,6 +68,9 @@ pub enum ConfigMessage {
     FieldWidth(usize),
     FieldHeight(usize),
     QueueLen(usize),
+
+    GravityDelay(u32),
+    LockDelay(u32),
 
     DelayedAutoShift(u32),
     AutoRepeatRate(u32),
@@ -107,6 +117,14 @@ impl ConfigPanelWrapper {
     fn input_label(label: &str, value: &impl fmt::Display) -> Html {
         html! { <p class="config-option-label">{ format!("{} ({}):", label, value) }</p> }
     }
+
+    fn button_capture_input(label: &str) -> Html {
+        html! {
+            <div class="config-option">
+                // <input type="button" value={ label } oninput={ callback }/>
+            </div>
+        }
+    }
 }
 
 impl Component for ConfigPanelWrapper {
@@ -126,10 +144,13 @@ impl Component for ConfigPanelWrapper {
 
             ConfigMessage::FieldWidth(width) => self.config.field_width = width,
             ConfigMessage::FieldHeight(height) => {
-                self.config.field_height = height;
-                self.config.field_hidden = height / 2;
+                self.config.field_height = height * 2;
+                self.config.field_hidden = height;
             }
             ConfigMessage::QueueLen(queue_len) => self.config.queue_len = queue_len,
+
+            ConfigMessage::GravityDelay(gravity) => self.config.gravity_delay = gravity,
+            ConfigMessage::LockDelay(lock_delay) => self.config.lock_delay = lock_delay,
 
             ConfigMessage::DelayedAutoShift(das) => self.config.delayed_auto_shift = das,
             ConfigMessage::AutoRepeatRate(arr) => self.config.auto_repeat_rate = arr,
@@ -155,6 +176,8 @@ impl Component for ConfigPanelWrapper {
         let field_width_callback = make_update_callback!(HtmlInputElement, ConfigMessage::FieldWidth);
         let field_height_callback = make_update_callback!(HtmlInputElement, ConfigMessage::FieldHeight);
         let queue_len_callback = make_update_callback!(HtmlInputElement, ConfigMessage::QueueLen);
+        let gravity_callback = make_update_callback!(HtmlInputElement, ConfigMessage::GravityDelay);
+        let lock_delay_callback = make_update_callback!(HtmlInputElement, ConfigMessage::LockDelay);
         let das_callback = make_update_callback!(HtmlInputElement, ConfigMessage::DelayedAutoShift);
         let arr_callback = make_update_callback!(HtmlInputElement, ConfigMessage::AutoRepeatRate);
         let sdr_callback = make_update_callback!(HtmlInputElement, ConfigMessage::SoftDropRate);
@@ -167,17 +190,24 @@ impl Component for ConfigPanelWrapper {
                 <div class="config-panel">
                     { Self::section_heading("Visual") }
                     { Self::select_input("Block skin", crate::SKIN_NAMES, &config.skin_name, skin_name_callback) }
-                    { Self::range_input("Field zoom", 0.25, 4.0, 0.01, config.field_zoom, field_zoom_callback) }
+                    { Self::range_input("Field zoom", 0.25, 4.0, 0.05, config.field_zoom, field_zoom_callback) }
 
                     { Self::section_heading("Playfield") }
                     { Self::range_input("Field width", 4, 100, 1, config.field_width, field_width_callback) }
-                    { Self::range_input("Field height", 6, 100, 1, config.field_height, field_height_callback) }
+                    { Self::range_input("Field height", 3, 100, 1, config.field_height / 2, field_height_callback) }
                     { Self::range_input("Queue length", 0, 7, 1, config.queue_len, queue_len_callback) }
+
+                    { Self::section_heading("Gameplay") }
+                    { Self::range_input("Gravity delay", 10, 5_000, 1, config.gravity_delay, gravity_callback) }
+                    { Self::range_input("Lock delay", 10, 3_000, 1, config.lock_delay, lock_delay_callback) }
 
                     { Self::section_heading("Handling") }
                     { Self::range_input("DAS", 0, 500, 1, config.delayed_auto_shift, das_callback) }
                     { Self::range_input("ARR", 0, 500, 1, config.auto_repeat_rate, arr_callback) }
                     { Self::range_input("SDR", 0, 500, 1, config.soft_drop_rate, sdr_callback) }
+
+                    { Self::section_heading("Controls") }
+                    { "todo lol" }
                 </div>
             </div>
         }
