@@ -22,7 +22,7 @@ body {
     font-weight: bold;
 }
 
-/* elrements */
+/* elements */
 
 .loading-text {
     color: white;
@@ -31,6 +31,21 @@ body {
 
     text-align: center;
     margin-top: 48vh;
+}
+
+.link {
+    color: #a4a0d8;
+    text-decoration: none;
+
+    transition: color 0.1s;
+}
+
+.link:hover {
+    color: #8e89cc;
+}
+
+.link:active {
+    color: #807bc5;
 }
 
 .content {
@@ -86,7 +101,7 @@ body {
     border-radius: 4px;
 
     padding: 2px 6px;
-    margin: 6px 0 12px 0;
+    margin: 6px 0 14px 0;
 
     transition: background-color 0.1s;
 }
@@ -122,6 +137,10 @@ body {
     display: inline-flex;
     flex-wrap: wrap;
     flex-direction: row-reverse;
+}
+
+.config-reset-button {
+    filter: hue-rotate(90deg) saturate(300%);
 }
 
 .game {

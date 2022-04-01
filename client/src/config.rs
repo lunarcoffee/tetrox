@@ -1,15 +1,15 @@
-use std::collections::HashMap;
 use std::fmt;
-use std::{ops::Deref, str::FromStr};
+use std::ops::Deref;
 
 use crate::board::{Board, Keybind};
 use bimap::BiMap;
+use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 use wasm_bindgen::JsCast;
-use web_sys::{HtmlInputElement, HtmlSelectElement, InputEvent, KeyboardEvent};
+use web_sys::{HtmlInputElement, HtmlSelectElement, InputEvent, KeyboardEvent, Storage};
 use yew::{html, Callback, Component, Context, Html};
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash, EnumIter)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, EnumIter, Serialize, Deserialize)]
 pub enum Input {
     Left,
     Right,
@@ -22,7 +22,7 @@ pub enum Input {
     Reset,
 }
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Serialize, Deserialize)]
 pub struct Config {
     // visual settings
     pub skin_name: String,
@@ -39,27 +39,36 @@ pub struct Config {
     pub gravity_delay: u32,
     pub lock_delay: u32,
 
+    // controls
+    pub inputs: BiMap<Input, Keybind>,
+
     // handling
     pub delayed_auto_shift: u32,
     pub auto_repeat_rate: u32,
     pub soft_drop_rate: u32,
+}
 
-    // controls
-    pub inputs: BiMap<Input, Keybind>,
+const CONFIG_LOCAL_STORAGE_KEY: &str = "config";
+
+impl Config {
+    fn from_local_storage(storage: Storage) -> Option<Self> {
+        let json = storage.get_item(CONFIG_LOCAL_STORAGE_KEY).ok()??;
+        serde_json::from_str(&json).ok()
+    }
 }
 
 impl Default for Config {
     fn default() -> Self {
-        // TODO: more sensible defaults lol
+        // guideline controls (minus double binds)
         let inputs = [
             (Input::Left, "ArrowLeft"),
             (Input::Right, "ArrowRight"),
             (Input::SoftDrop, "ArrowDown"),
             (Input::HardDrop, " "),
-            (Input::RotateCw, "ArrowUp"),
-            (Input::RotateCcw, "s"),
-            (Input::Rotate180, "a"),
-            (Input::SwapHoldPiece, "d"),
+            (Input::RotateCw, "x"),
+            (Input::RotateCcw, "z"),
+            (Input::Rotate180, "Shift"),
+            (Input::SwapHoldPiece, "c"),
             (Input::Reset, "`"),
         ]
         .into_iter()
@@ -79,9 +88,9 @@ impl Default for Config {
             gravity_delay: 1_000,
             lock_delay: 500,
 
-            delayed_auto_shift: 120,
-            auto_repeat_rate: 0,
-            soft_drop_rate: 0,
+            delayed_auto_shift: 280,
+            auto_repeat_rate: 50,
+            soft_drop_rate: 30,
 
             inputs,
         }
@@ -116,6 +125,8 @@ pub enum ConfigMessage {
     StartRebindInput(Input),
     CancelRebindInput,
     RebindInput(String),
+
+    ResetToDefault,
 }
 
 // config panel which wraps a `Board` component
@@ -172,7 +183,7 @@ impl ConfigPanelWrapper {
                     " " => "Space",
                     _ if k.starts_with("Arrow") => &k[5..],
                     _ => k.as_str(),
-                }
+                },
             })
             .unwrap_or("<unset>");
 
@@ -194,6 +205,12 @@ impl ConfigPanelWrapper {
             </div>
         }
     }
+
+    fn store_config(&self) {
+        let storage = web_sys::window().unwrap().local_storage().unwrap().unwrap();
+        let json = serde_json::to_string(&self.config).expect("amongus");
+        storage.set_item(CONFIG_LOCAL_STORAGE_KEY, &json).expect("sussus");
+    }
 }
 
 impl Component for ConfigPanelWrapper {
@@ -201,9 +218,10 @@ impl Component for ConfigPanelWrapper {
     type Properties = ();
 
     fn create(_ctx: &Context<Self>) -> Self {
-        // TODO: retrieve from localstorage
+        let storage = web_sys::window().unwrap().local_storage().unwrap().unwrap();
+
         ConfigPanelWrapper {
-            config: Config::default(),
+            config: Config::from_local_storage(storage).unwrap_or_else(|| Config::default()),
             capturing_input: None,
         }
     }
@@ -228,6 +246,8 @@ impl Component for ConfigPanelWrapper {
             ConfigMessage::DelayedAutoShift(das) => self.config.delayed_auto_shift = das,
             ConfigMessage::AutoRepeatRate(arr) => self.config.auto_repeat_rate = arr,
             ConfigMessage::SoftDropRate(sdr) => self.config.soft_drop_rate = sdr,
+
+            ConfigMessage::ResetToDefault => self.config = Config::default(),
             _ => {}
         }
 
@@ -244,7 +264,7 @@ impl Component for ConfigPanelWrapper {
             _ => {}
         }
 
-        // TODO: update to localstorage
+        self.store_config();
         true
     }
 
@@ -261,14 +281,19 @@ impl Component for ConfigPanelWrapper {
         let skin_name_callback = make_update_callback!(HtmlSelectElement, ConfigMessage::SkinName);
         let field_zoom_callback = make_update_callback!(HtmlInputElement, ConfigMessage::FieldZoom);
         let offset_callback = make_update_callback!(HtmlInputElement, ConfigMessage::VerticalOffset);
+
         let field_width_callback = make_update_callback!(HtmlInputElement, ConfigMessage::FieldWidth);
         let field_height_callback = make_update_callback!(HtmlInputElement, ConfigMessage::FieldHeight);
         let queue_len_callback = make_update_callback!(HtmlInputElement, ConfigMessage::QueueLen);
+
         let gravity_callback = make_update_callback!(HtmlInputElement, ConfigMessage::GravityDelay);
         let lock_delay_callback = make_update_callback!(HtmlInputElement, ConfigMessage::LockDelay);
+
         let das_callback = make_update_callback!(HtmlInputElement, ConfigMessage::DelayedAutoShift);
         let arr_callback = make_update_callback!(HtmlInputElement, ConfigMessage::AutoRepeatRate);
         let sdr_callback = make_update_callback!(HtmlInputElement, ConfigMessage::SoftDropRate);
+
+        let reset_defaults_callback = ctx.link().callback(|_| ConfigMessage::ResetToDefault);
 
         let config = &self.config;
 
@@ -307,6 +332,16 @@ impl Component for ConfigPanelWrapper {
                     { Self::range_input("DAS", 0, 500, 1, config.delayed_auto_shift, das_callback) }
                     { Self::range_input("ARR", 0, 500, 1, config.auto_repeat_rate, arr_callback) }
                     { Self::range_input("SDR", 0, 500, 1, config.soft_drop_rate, sdr_callback) }
+
+                    { Self::section_heading("Misc") }
+                    <p class="config-option-label">{ "tetrox by lunarcoffee" }</p>
+                    <a class="config-option-label link"  href="https://github.com/lunarcoffee/tetrox" target="_blank">
+                        { "github" }
+                    </a>
+                    <div class="config-option" style="margin: 10px 0 6px 0;">
+                        <input class="config-reset-button" type="button" value={ "Reset all to default" } 
+                               onclick={ reset_defaults_callback }/>
+                    </div>
                 </div>
             </div>
         }

@@ -131,7 +131,6 @@ impl Board {
                     Input::SwapHoldPiece => ctx.link().send_message(BoardMessage::SwapHoldPiece),
                     Input::HardDrop => inputs.set_pressed_msg(Input::HardDrop, ctx, BoardMessage::HardDrop),
                     Input::Reset => ctx.link().send_message(BoardMessage::Reset),
-                    _ => return false,
                 }
                 true
             })
