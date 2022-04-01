@@ -3,10 +3,10 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 use crate::animation::{Animation, AnimationState};
-use crate::canvas::{CanvasRenderer, self};
-use crate::config::ReadOnlyConfig;
+use crate::canvas::CanvasRenderer;
+use crate::config::{Input, ReadOnlyConfig};
 use crate::game_stats::GameStatsDrawer;
-use crate::input::{Input, InputStates};
+use crate::input::InputStates;
 use gloo_timers::callback::{Interval, Timeout};
 use tetrox::{
     field::DefaultField,
@@ -112,35 +112,37 @@ pub struct Board {
     config: ReadOnlyConfig,
 }
 
+pub type Keybind = String;
+
 impl Board {
     fn process_key_press(&mut self, ctx: &Context<Self>, e: &KeyboardEvent) -> bool {
         let inputs = &mut self.input_states;
-        match &e.key().to_lowercase()[..] {
-            "arrowleft" => inputs.left_pressed(ctx),
-            "arrowright" => inputs.right_pressed(ctx),
-            "arrowdown" => inputs.soft_drop_pressed(ctx),
-            "arrowup" => inputs.set_pressed_msg(Input::RotateCw, ctx, BoardMessage::RotateCw),
-            "s" => inputs.set_pressed_msg(Input::RotateCcw, ctx, BoardMessage::RotateCcw),
-            "a" => inputs.set_pressed_msg(Input::Rotate180, ctx, BoardMessage::Rotate180),
-            "d" => ctx.link().send_message(BoardMessage::SwapHoldPiece),
-            " " => inputs.set_pressed_msg(Input::HardDrop, ctx, BoardMessage::HardDrop),
-            "`" => ctx.link().send_message(BoardMessage::Reset),
-            _ => return false,
-        }
-        true
+        self.config
+            .inputs
+            .get_by_right(&e.key())
+            .map(|input| {
+                match input {
+                    Input::Left => inputs.left_pressed(ctx),
+                    Input::Right => inputs.right_pressed(ctx),
+                    Input::SoftDrop => inputs.soft_drop_pressed(ctx),
+                    Input::RotateCw => inputs.set_pressed_msg(Input::RotateCw, ctx, BoardMessage::RotateCw),
+                    Input::RotateCcw => inputs.set_pressed_msg(Input::RotateCcw, ctx, BoardMessage::RotateCcw),
+                    Input::Rotate180 => inputs.set_pressed_msg(Input::Rotate180, ctx, BoardMessage::Rotate180),
+                    Input::SwapHoldPiece => ctx.link().send_message(BoardMessage::SwapHoldPiece),
+                    Input::HardDrop => inputs.set_pressed_msg(Input::HardDrop, ctx, BoardMessage::HardDrop),
+                    Input::Reset => ctx.link().send_message(BoardMessage::Reset),
+                    _ => return false,
+                }
+                true
+            })
+            .unwrap_or(false)
     }
 
     fn process_key_release(&mut self, e: &KeyboardEvent) -> bool {
-        self.input_states.set_released(match &e.key().to_lowercase()[..] {
-            "arrowleft" => Input::Left,
-            "arrowright" => Input::Right,
-            "arrowdown" => Input::SoftDrop,
-            "arrowup" => Input::RotateCw,
-            "s" => Input::RotateCcw,
-            "a" => Input::Rotate180,
-            " " => Input::HardDrop,
-            _ => return false,
-        });
+        self.config
+            .inputs
+            .get_by_right(&e.key())
+            .map(|input| self.input_states.set_released(*input));
         false
     }
 
@@ -316,7 +318,7 @@ impl Component for Board {
 
         self.input_states.update_config(self.config.clone());
         self.canvas_renderer.update_config(self.config.clone());
-        
+
         self.timers = BoardTimers::new(ctx, self.animation_state.get_active(), self.config.clone());
         self.timers.reset_gravity(ctx);
         self.timers.reset_lock_delay(ctx);
@@ -335,8 +337,7 @@ impl Component for Board {
         let game_style = format!(
             "transform: scale({}%); margin-top: {}px;",
             self.config.field_zoom * 100.0,
-            130,
-            // 472 - ((self.config.field_hidden * canvas::SQUARE_MUL) as f64 * self.config.field_zoom) as i32,
+            self.config.vertical_offset,
         );
 
         html! {

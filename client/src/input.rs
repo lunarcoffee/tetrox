@@ -2,29 +2,17 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use gloo_timers::callback::{Interval, Timeout};
 use strum::IntoEnumIterator;
-use strum_macros::EnumIter;
 use yew::{html::Scope, Context};
 
 use crate::{
     board::{Board, BoardMessage},
-    config::ReadOnlyConfig,
+    config::{ReadOnlyConfig, Input},
 };
 
 // timeout for das, intervals for arr and soft dropping
 enum MoveTimer {
     Timeout(Timeout),
     Interval(Interval),
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, Hash, EnumIter)]
-pub enum Input {
-    Left,
-    Right,
-    SoftDrop,
-    HardDrop,
-    RotateCw,
-    RotateCcw,
-    Rotate180,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
