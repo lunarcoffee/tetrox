@@ -278,8 +278,8 @@ impl Component for ConfigPanelWrapper {
                 <div class="config-panel">
                     { Self::section_heading("Visual") }
                     { Self::select_input("Block skin", crate::SKIN_NAMES, &config.skin_name, skin_name_callback) }
-                    { Self::range_input("Field zoom", 0.25, 4.0, 0.05, config.field_zoom, field_zoom_callback) }
-                    { Self::range_input("Vertical offset", -5_000, 5_000, 10, config.vertical_offset, offset_callback) }
+                    { Self::range_input("Field zoom", 0.1, 4.0, 0.05, config.field_zoom, field_zoom_callback) }
+                    { Self::range_input("Vertical offset", -2_000, 2_000, 10, config.vertical_offset, offset_callback) }
 
                     { Self::section_heading("Playfield") }
                     { Self::range_input("Field width", 4, 100, 1, config.field_width, field_width_callback) }
@@ -290,7 +290,7 @@ impl Component for ConfigPanelWrapper {
                     { Self::range_input("Gravity delay", 10, 5_000, 5, config.gravity_delay, gravity_callback) }
                     { Self::range_input("Lock delay", 10, 3_000, 5, config.lock_delay, lock_delay_callback) }
 
-                    { Self::section_heading("Controls") }
+                    { Self::section_heading("Keybinds") }
                     <div class="config-button-box">
                         { self.button_capture_input(ctx, "Left", Input::Left) }
                         { self.button_capture_input(ctx, "Right", Input::Right) }

@@ -81,39 +81,39 @@ body {
 .config-option>select {
     font-family: "IBM Plex Sans";
 
-    background: #d8d7f1bb;
+    background-color: #d8d7f1cc;
     border: none;
     border-radius: 4px;
 
     padding: 2px 6px;
-    margin: 6px 0 10px 0;
+    margin: 6px 0 12px 0;
 
-    transition: background 0.1s;
+    transition: background-color 0.1s;
 }
 
 .config-option>select:hover {
-    background: #c3c2e2bb;
+    background-color: #c3c2e2cc;
 }
 
 .config-option>input[type=button] {
     font-family: "IBM Plex Sans";
 
-    background: #d8d7f1bb;
+    background-color: #d8d7f1cc;
     border: none;
     border-radius: 4px;
 
     padding: 2px 6px;
     margin: 2px 0 2px 4px;
 
-    transition: background 0.1s;
+    transition: background-color 0.1s;
 }
 
 .config-option>input[type=button]:hover {
-    background: #c3c2e2bb;
+    background-color: #c3c2e2cc;
 }
 
 .config-option>input[type=button]:active {
-    background: #aeaccfbb;
+    background-color: #aeaccfcc;
 }
 
 .config-button-box {
@@ -157,6 +157,7 @@ body {
 .game-stats-clear-text {
     color: #ccc;
 
+    font-family: "IBM Plex Sans";
     font-size: 1.8rem;
     direction: rtl;
 
