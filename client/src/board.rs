@@ -182,7 +182,6 @@ impl Board {
             config.field_width,
             config.field_height,
             config.field_hidden,
-            config.queue_len,
             &mut self.bag,
         );
         self.input_states = InputStates::new(config.clone());
@@ -203,13 +202,7 @@ impl Component for Board {
         let config = ctx.props().config.clone();
 
         let mut bag = SingleBag::new();
-        let field = DefaultField::new(
-            config.field_width,
-            config.field_height,
-            config.field_hidden,
-            config.queue_len,
-            &mut bag,
-        );
+        let field = DefaultField::new(config.field_width, config.field_height, config.field_hidden, &mut bag);
         let animation_state = AnimationState::new();
 
         Board {
@@ -308,8 +301,7 @@ impl Component for Board {
 
         let field_changed = self.config.field_width != self.field.width()
             || self.config.field_height != self.field.height()
-            || self.config.field_hidden != self.field.hidden()
-            || self.config.queue_len != self.field.queue_len();
+            || self.config.field_hidden != self.field.hidden();
 
         self.input_states.update_config(self.config.clone());
         self.canvas_renderer.update_config(self.config.clone());
@@ -352,7 +344,7 @@ impl Component for Board {
                     { self.canvas_renderer.field_canvas(&self.field) }
                 </div>
                 <div class="next-queue">
-                    { self.canvas_renderer.next_queue_canvas(&self.field) }
+                    { self.canvas_renderer.next_queue_canvas(&self.config) }
                 </div>
             </div>
         }
@@ -364,7 +356,7 @@ impl Component for Board {
             self.game_div.cast::<HtmlElement>().unwrap().focus().unwrap();
         }
         self.canvas_renderer.draw_hold_piece(&self.field);
-        self.canvas_renderer.draw_next_queue(&self.field, &mut self.bag);
+        self.canvas_renderer.draw_next_queue(&mut self.bag, &self.config);
         self.canvas_renderer.draw_field(&self.field, first_render);
     }
 }

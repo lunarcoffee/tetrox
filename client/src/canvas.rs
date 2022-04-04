@@ -66,12 +66,12 @@ impl CanvasRenderer {
         }
     }
 
-    pub fn next_queue_canvas(&self, field: &DefaultField<SrsTetromino>) -> Html {
+    pub fn next_queue_canvas(&self, config: &ReadOnlyConfig) -> Html {
         html! {
             <canvas ref={ self.next_queue_canvas.clone() }
                     class="next-queue-canvas"
                     width={ SIDE_BAR_WIDTH.to_string() }
-                    height={ (LABEL_HEIGHT + PIECE_HEIGHT * field.queue_len() + SIDE_BAR_PADDING).to_string() }>
+                    height={ (LABEL_HEIGHT + PIECE_HEIGHT * config.queue_len + SIDE_BAR_PADDING).to_string() }>
             </canvas>
         }
     }
@@ -177,9 +177,13 @@ impl CanvasRenderer {
         }
     }
 
-    pub fn draw_next_queue(&mut self, field: &DefaultField<SrsTetromino>, bag: &mut SingleBag<SrsTetromino>) {
+    pub fn draw_next_queue(
+        &mut self,
+        bag: &mut SingleBag<SrsTetromino>,
+        config: &ReadOnlyConfig,
+    ) {
         // total height of queue in pixels
-        let nq_h_px = (LABEL_HEIGHT + PIECE_HEIGHT * field.queue_len() + SIDE_BAR_PADDING) as f64;
+        let nq_h_px = (LABEL_HEIGHT + PIECE_HEIGHT * config.queue_len + SIDE_BAR_PADDING) as f64;
 
         if let Some(canvas) = self.next_queue_canvas.cast::<HtmlCanvasElement>() {
             let context = canvas
@@ -203,7 +207,7 @@ impl CanvasRenderer {
             context.set_font("18px 'IBM Plex Sans'");
             context.fill_text("next", 8.0, 24.0).unwrap();
 
-            let queue = bag.peek().take(field.queue_len()).cloned().collect::<Vec<_>>();
+            let queue = bag.peek().take(config.queue_len).cloned().collect::<Vec<_>>();
 
             for (nth, kind) in queue.iter().enumerate() {
                 self.draw_piece(

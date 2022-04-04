@@ -152,7 +152,6 @@ pub struct DefaultField<P: PieceKind> {
     width: usize,
     height: usize,
     hidden: usize,
-    queue_len: usize,
 
     lines: Vec<Line<P>>,
 
@@ -169,7 +168,7 @@ pub struct DefaultField<P: PieceKind> {
 }
 
 impl<P: PieceKind> DefaultField<P> {
-    pub fn new(width: usize, height: usize, hidden: usize, queue_len: usize, bag: &mut impl Bag<P>) -> Self {
+    pub fn new(width: usize, height: usize, hidden: usize, bag: &mut impl Bag<P>) -> Self {
         // coordinates of the center (left-aligned) of the bottom-most line of pieces spawned on this field
         // i.e. the coordinates of the @ sign in the following 10-wide field:
         // |    #     |
@@ -181,7 +180,6 @@ impl<P: PieceKind> DefaultField<P> {
             width,
             height,
             hidden,
-            queue_len,
 
             lines: (0..height).map(|_| Line::new(width)).collect(),
 
@@ -208,8 +206,6 @@ impl<P: PieceKind> DefaultField<P> {
     }
 
     pub fn hidden(&self) -> usize { self.hidden }
-
-    pub fn queue_len(&self) -> usize { self.queue_len }
 
     pub fn lines(&self) -> &[Line<P>] { &self.lines }
 
