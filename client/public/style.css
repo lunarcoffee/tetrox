@@ -152,6 +152,10 @@ body {
     flex-direction: row-reverse;
 }
 
+.config-toggle-button-on {}
+
+.config-toggle-button-off {}
+
 .config-reset-button {
     filter: hue-rotate(90deg) saturate(300%);
 }

@@ -80,10 +80,14 @@ impl BoardTimers {
 
     fn reset_gravity(&mut self, ctx: &Context<Board>) {
         let link = ctx.link().clone();
-        self.gravity = Some(Interval::new(self.config.gravity_delay, move || {
-            link.send_message(BoardMessage::MoveDown);
-        }));
+        if self.config.gravity_enabled {
+            self.gravity = Some(Interval::new(self.config.gravity_delay, move || {
+                link.send_message(BoardMessage::MoveDown);
+            }));
+        }
     }
+
+    fn cancel_gravity(&mut self) { self.gravity.take().map(|timer| timer.cancel()); }
 
     fn reset_lock_delay(&mut self, ctx: &Context<Board>) {
         let link = ctx.link().clone();
@@ -241,6 +245,17 @@ impl Component for Board {
             _ => {}
         };
 
+        // handle resets before topping out so you can reset once topped out
+        if matches!(msg, BoardMessage::Reset) {
+            self.reset(ctx);
+            return true;
+        }
+
+        // freeze the game when topped out
+        if self.field.topped_out() && self.config.topping_out_enabled {
+            return false;
+        }
+
         // avoids clutter from making every match arm a block with `true` or `false` at the end
         let to_true = |_| true;
         let to_false = |_| false;
@@ -273,20 +288,15 @@ impl Component for Board {
 
                 let clear_type = self.field.hard_drop(&mut self.bag);
                 self.game_stats.set_clear_type(&mut self.animation_state, clear_type);
-
                 true
             }
             // only lock if the piece is still touching the stack
-            BoardMessage::LockDelayDrop => self
-                .field
-                .cur_piece_cannot_move_down()
+            BoardMessage::LockDelayDrop => (self.field.cur_piece_cannot_move_down() && self.config.auto_lock_enabled)
                 .then(|| ctx.link().send_message(BoardMessage::HardDrop))
                 .is_some(),
 
             BoardMessage::TickAnimation(animation) => to_true(self.animation_state.tick(ctx, animation)),
             BoardMessage::StopAnimation(animation) => to_false(self.animation_state.stop_animation(animation)),
-
-            BoardMessage::Reset => to_true(self.reset(ctx)),
             _ => false,
         };
 
@@ -299,10 +309,7 @@ impl Component for Board {
     fn changed(&mut self, ctx: &Context<Self>) -> bool {
         self.config = ctx.props().config.clone();
 
-        let field_changed = self.config.field_width != self.field.width()
-            || self.config.field_height != self.field.height()
-            || self.config.field_hidden != self.field.hidden();
-
+        // update config-dependent parts
         self.input_states.update_config(self.config.clone());
         self.canvas_renderer.update_config(self.config.clone());
 
@@ -310,6 +317,16 @@ impl Component for Board {
         self.timers.reset_gravity(ctx);
         self.timers.reset_lock_delay(ctx);
 
+        // gravity has already been reset above
+        if !self.config.gravity_enabled {
+            self.timers.cancel_gravity();
+        }
+
+        let field_changed = self.config.field_width != self.field.width()
+            || self.config.field_height != self.field.height()
+            || self.config.field_hidden != self.field.hidden();
+
+        // changes to field properties (width, height, etc.) must reset the board
         if field_changed {
             self.reset(ctx);
         }

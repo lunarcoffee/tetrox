@@ -39,6 +39,9 @@ pub struct Config {
     // gameplay
     pub gravity_delay: u32,
     pub lock_delay: u32,
+    pub topping_out_enabled: bool,
+    pub auto_lock_enabled: bool,
+    pub gravity_enabled: bool,
 
     // controls
     pub inputs: BiMap<Input, Keybind>,
@@ -89,6 +92,9 @@ impl Default for Config {
 
             gravity_delay: 1_000,
             lock_delay: 500,
+            topping_out_enabled: true,
+            auto_lock_enabled: true,
+            gravity_enabled: true,
 
             delayed_auto_shift: 280,
             auto_repeat_rate: 50,
@@ -120,6 +126,9 @@ pub enum ConfigMessage {
 
     GravityDelay(u32),
     LockDelay(u32),
+    ToggleToppingOut,
+    ToggleAutoLock,
+    ToggleGravity,
 
     DelayedAutoShift(u32),
     AutoRepeatRate(u32),
@@ -209,6 +218,21 @@ impl ConfigPanelWrapper {
         }
     }
 
+    fn toggle_input(ctx: &Context<Self>, label: &str, value: bool, msg: ConfigMessage) -> Html {
+        let value_on_off = if value { "on" } else { "off" };
+        let label = format!("{} ({})", label, value_on_off);
+        let toggle_callback = ctx.link().callback_once(move |_| msg);
+
+        html! {
+            <div class="config-option">
+                <input class={ format!("config-toggle-button-{}", value_on_off) }
+                       type="button" 
+                       value={ label } 
+                       onclick={ toggle_callback }/>
+            </div>
+        }
+    }
+
     fn store_config(&self) {
         let storage = web_sys::window().unwrap().local_storage().unwrap().unwrap();
         let json = serde_json::to_string(&self.config).expect("amongus");
@@ -246,6 +270,9 @@ impl Component for ConfigPanelWrapper {
 
             ConfigMessage::GravityDelay(gravity) => self.config.gravity_delay = gravity,
             ConfigMessage::LockDelay(lock_delay) => self.config.lock_delay = lock_delay,
+            ConfigMessage::ToggleToppingOut => self.config.topping_out_enabled ^= true,
+            ConfigMessage::ToggleAutoLock => self.config.auto_lock_enabled ^= true,
+            ConfigMessage::ToggleGravity => self.config.gravity_enabled ^= true,
 
             ConfigMessage::DelayedAutoShift(das) => self.config.delayed_auto_shift = das,
             ConfigMessage::AutoRepeatRate(arr) => self.config.auto_repeat_rate = arr,
@@ -282,23 +309,24 @@ impl Component for ConfigPanelWrapper {
             };
         }
 
-        let skin_name_callback = make_update_callback!(HtmlSelectElement, ConfigMessage::SkinName);
-        let field_zoom_callback = make_update_callback!(HtmlInputElement, ConfigMessage::FieldZoom);
-        let offset_callback = make_update_callback!(HtmlInputElement, ConfigMessage::VerticalOffset);
-        let shadow_callback = make_update_callback!(HtmlInputElement, ConfigMessage::ShadowOpacity);
+        // TODO: just pass the message into the input factory function?
+        let skin_name_cb = make_update_callback!(HtmlSelectElement, ConfigMessage::SkinName);
+        let field_zoom_cb = make_update_callback!(HtmlInputElement, ConfigMessage::FieldZoom);
+        let offset_cb = make_update_callback!(HtmlInputElement, ConfigMessage::VerticalOffset);
+        let shadow_cb = make_update_callback!(HtmlInputElement, ConfigMessage::ShadowOpacity);
 
-        let field_width_callback = make_update_callback!(HtmlInputElement, ConfigMessage::FieldWidth);
-        let field_height_callback = make_update_callback!(HtmlInputElement, ConfigMessage::FieldHeight);
-        let queue_len_callback = make_update_callback!(HtmlInputElement, ConfigMessage::QueueLen);
+        let field_width_cb = make_update_callback!(HtmlInputElement, ConfigMessage::FieldWidth);
+        let field_height_cb = make_update_callback!(HtmlInputElement, ConfigMessage::FieldHeight);
+        let queue_len_cb = make_update_callback!(HtmlInputElement, ConfigMessage::QueueLen);
 
-        let gravity_callback = make_update_callback!(HtmlInputElement, ConfigMessage::GravityDelay);
-        let lock_delay_callback = make_update_callback!(HtmlInputElement, ConfigMessage::LockDelay);
+        let gravity_cb = make_update_callback!(HtmlInputElement, ConfigMessage::GravityDelay);
+        let lock_delay_cb = make_update_callback!(HtmlInputElement, ConfigMessage::LockDelay);
 
-        let das_callback = make_update_callback!(HtmlInputElement, ConfigMessage::DelayedAutoShift);
-        let arr_callback = make_update_callback!(HtmlInputElement, ConfigMessage::AutoRepeatRate);
-        let sdr_callback = make_update_callback!(HtmlInputElement, ConfigMessage::SoftDropRate);
+        let das_cb = make_update_callback!(HtmlInputElement, ConfigMessage::DelayedAutoShift);
+        let arr_cb = make_update_callback!(HtmlInputElement, ConfigMessage::AutoRepeatRate);
+        let sdr_cb = make_update_callback!(HtmlInputElement, ConfigMessage::SoftDropRate);
 
-        let reset_defaults_callback = ctx.link().callback(|_| ConfigMessage::ResetToDefault);
+        let reset_cb = ctx.link().callback(|_| ConfigMessage::ResetToDefault);
 
         let config = &self.config;
 
@@ -310,19 +338,24 @@ impl Component for ConfigPanelWrapper {
                 <Board config={ ReadOnlyConfig(self.config.clone()) }/>
                 <div class="config-panel">
                     { Self::section_heading("Visual") }
-                    { Self::select_input("Block skin", crate::SKIN_NAMES, &config.skin_name, skin_name_callback) }
-                    { Self::range_input("Field zoom", 0.1, 4.0, 0.05, config.field_zoom, field_zoom_callback) }
-                    { Self::range_input("Vertical offset", -2_000, 2_000, 10, config.vertical_offset, offset_callback) }
-                    { Self::range_input("Ghost piece opacity", 0.0, 1.0, 0.05, config.shadow_opacity, shadow_callback) }
+                    { Self::select_input("Block skin", crate::SKIN_NAMES, &config.skin_name, skin_name_cb) }
+                    { Self::range_input("Field zoom", 0.1, 4.0, 0.05, config.field_zoom, field_zoom_cb) }
+                    { Self::range_input("Vertical offset", -2_000, 2_000, 10, config.vertical_offset, offset_cb) }
+                    { Self::range_input("Ghost piece opacity", 0.0, 1.0, 0.05, config.shadow_opacity, shadow_cb) }
 
                     { Self::section_heading("Playfield") }
-                    { Self::range_input("Field width", 4, 100, 1, config.field_width, field_width_callback) }
-                    { Self::range_input("Field height", 3, 100, 1, config.field_height / 2, field_height_callback) }
-                    { Self::range_input("Queue length", 0, 7, 1, config.queue_len, queue_len_callback) }
+                    { Self::range_input("Field width", 4, 100, 1, config.field_width, field_width_cb) }
+                    { Self::range_input("Field height", 3, 100, 1, config.field_height / 2, field_height_cb) }
+                    { Self::range_input("Queue length", 0, 7, 1, config.queue_len, queue_len_cb) }
 
                     { Self::section_heading("Gameplay") }
-                    { Self::range_input("Gravity delay", 10, 5_000, 5, config.gravity_delay, gravity_callback) }
-                    { Self::range_input("Lock delay", 10, 3_000, 5, config.lock_delay, lock_delay_callback) }
+                    { Self::range_input("Gravity delay", 10, 5_000, 5, config.gravity_delay, gravity_cb) }
+                    { Self::range_input("Lock delay", 10, 3_000, 5, config.lock_delay, lock_delay_cb) }
+                    <div class="config-button-box">
+                        { Self::toggle_input(ctx, "Topping out", config.topping_out_enabled, ConfigMessage::ToggleToppingOut) }
+                        { Self::toggle_input(ctx, "Auto lock", config.auto_lock_enabled, ConfigMessage::ToggleAutoLock) }
+                        { Self::toggle_input(ctx, "Gravity", config.gravity_enabled, ConfigMessage::ToggleGravity) }
+                    </div>
 
                     { Self::section_heading("Keybinds") }
                     <div class="config-button-box">
@@ -338,9 +371,9 @@ impl Component for ConfigPanelWrapper {
                     </div>
 
                     { Self::section_heading("Handling") }
-                    { Self::range_input("DAS", 0, 500, 1, config.delayed_auto_shift, das_callback) }
-                    { Self::range_input("ARR", 0, 500, 1, config.auto_repeat_rate, arr_callback) }
-                    { Self::range_input("SDR", 0, 500, 1, config.soft_drop_rate, sdr_callback) }
+                    { Self::range_input("DAS", 0, 500, 1, config.delayed_auto_shift, das_cb) }
+                    { Self::range_input("ARR", 0, 500, 1, config.auto_repeat_rate, arr_cb) }
+                    { Self::range_input("SDR", 0, 500, 1, config.soft_drop_rate, sdr_cb) }
 
                     { Self::section_heading("Misc") }
                     <p class="config-option-label">{ "tetrox by lunarcoffee" }</p>
@@ -348,8 +381,7 @@ impl Component for ConfigPanelWrapper {
                         { "github" }
                     </a>
                     <div class="config-option" style="margin: 10px 0 6px 0;">
-                        <input class="config-reset-button" type="button" value={ "Reset all to default" }
-                               onclick={ reset_defaults_callback }/>
+                        <input class="config-reset-button" type="button" value={ "Reset to default" } onclick={ reset_cb }/>
                     </div>
                 </div>
             </div>

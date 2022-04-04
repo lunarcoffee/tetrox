@@ -16,7 +16,7 @@ pub struct CanvasRenderer {
     field_canvas: NodeRef,
     next_queue_canvas: NodeRef,
 
-    asset_cache: HashMap<SrsTetromino, HtmlImageElement>, // cache image assets for performance
+    asset_cache: HashMap<String, HtmlImageElement>, // cache image assets for performance
 
     config: ReadOnlyConfig,
 }
@@ -159,7 +159,7 @@ impl CanvasRenderer {
             let shadow_piece = field.shadow_piece();
             for Coords(row, col) in shadow_piece.coords() {
                 self.draw_square(
-                    &shadow_piece.kind(),
+                    shadow_piece.kind().asset_name(),
                     &context,
                     *row as usize * SQUARE_MUL,
                     *col as usize * SQUARE_MUL,
@@ -170,18 +170,20 @@ impl CanvasRenderer {
             for (row, line) in field.lines().iter().enumerate() {
                 for (col, square) in line.squares().iter().enumerate() {
                     if let Square::Filled(kind) = square {
-                        self.draw_square(kind, &context, row * SQUARE_MUL, col * SQUARE_MUL);
+                        let topped_out = field.topped_out() && self.config.topping_out_enabled;
+                        self.draw_square(
+                            if topped_out { "grey" } else { kind.asset_name() },
+                            &context,
+                            row * SQUARE_MUL,
+                            col * SQUARE_MUL,
+                        );
                     }
                 }
             }
         }
     }
 
-    pub fn draw_next_queue(
-        &mut self,
-        bag: &mut SingleBag<SrsTetromino>,
-        config: &ReadOnlyConfig,
-    ) {
+    pub fn draw_next_queue(&mut self, bag: &mut SingleBag<SrsTetromino>, config: &ReadOnlyConfig) {
         // total height of queue in pixels
         let nq_h_px = (LABEL_HEIGHT + PIECE_HEIGHT * config.queue_len + SIDE_BAR_PADDING) as f64;
 
@@ -233,15 +235,15 @@ impl CanvasRenderer {
             .map(|c| c + offset);
 
         for Coords(row, col) in final_coords {
-            self.draw_square(&kind, context, row as usize, col as usize);
+            self.draw_square(kind.asset_name(), context, row as usize, col as usize);
         }
     }
 
     // draw a square at the given coords on a canvas
-    fn draw_square(&self, kind: &SrsTetromino, context: &CanvasRenderingContext2d, row: usize, col: usize) {
+    fn draw_square(&self, asset_name: &str, context: &CanvasRenderingContext2d, row: usize, col: usize) {
         context
             .draw_image_with_html_image_element_and_dw_and_dh(
-                &self.asset_cache.get(kind).unwrap(),
+                &self.asset_cache.get(asset_name).unwrap(),
                 col as f64,
                 row as f64,
                 SQUARE_MUL as f64,
@@ -269,12 +271,16 @@ impl CanvasRenderer {
 
     fn populate_asset_cache(&mut self) {
         self.asset_cache = SrsTetromino::iter()
-            .map(|kind| {
+            .map(|k| k.asset_name().to_string())
+            .chain(["grey".to_string()])
+            .map(|asset_name| {
                 let field_square_mul = SQUARE_MUL as u32;
                 let image = HtmlImageElement::new_with_width_and_height(field_square_mul, field_square_mul).unwrap();
-                let asset_src = format!("assets/skins/{}/{}.png", self.config.skin_name, kind.asset_name());
+
+                let asset_src = format!("assets/skins/{}/{}.png", self.config.skin_name, asset_name);
                 image.set_src(&asset_src);
-                (kind, image)
+
+                (asset_name.to_string(), image)
             })
             .collect();
     }

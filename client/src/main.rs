@@ -34,10 +34,11 @@ pub const SKIN_NAMES: &[&str] = &["tetrox", "gradient", "inset", "rounded", "sol
 
 impl AssetPreloader {
     fn register_asset_load_callbacks(&mut self, ctx: &Context<Self>) {
-        for kind in SrsTetromino::iter() {
+        let kinds = SrsTetromino::iter().map(|k| k.asset_name().to_string()).chain(["grey".to_string()]);
+        for kind in kinds {
             for skin_name in SKIN_NAMES {
                 let image = HtmlImageElement::new().unwrap();
-                let asset_src = format!("assets/skins/{}/{}.png", skin_name, kind.asset_name());
+                let asset_src = format!("assets/skins/{}/{}.png", skin_name, kind);
                 image.set_src(&asset_src);
 
                 let link = ctx.link().clone();
@@ -86,6 +87,6 @@ impl Component for AssetPreloader {
 }
 
 fn main() {
-    let n_assets = SrsTetromino::iter().count() * SKIN_NAMES.len();
+    let n_assets = (SrsTetromino::iter().count() + 1) * SKIN_NAMES.len();
     yew::start_app_with_props::<AssetPreloader>(AssetPreloaderProps { n_assets });
 }

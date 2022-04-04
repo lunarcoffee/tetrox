@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::{Bag, Coords, CoordsFloat, KickTable, KickTable180, PieceKind, RotationState};
 
 #[derive(Copy, Clone)]
@@ -158,7 +160,11 @@ pub struct DefaultField<P: PieceKind> {
     cur_piece: LivePiece<P>,
     hold_piece: Option<P>,
     hold_swapped: bool,
+
+    topped_out: bool,
+
     piece_origin: Coords,
+    spawn_area: HashSet<Coords>,
 
     lock_delay_actions: Option<usize>,
 
@@ -176,6 +182,11 @@ impl<P: PieceKind> DefaultField<P> {
         // note how the center is left-aligned for even field widths
         let piece_origin = Coords(hidden as i32 - 2, width as i32 / 2 - 1);
 
+        // set of coords where pieces may spawn (used to detect topping out)
+        let spawn_area = P::iter()
+            .flat_map(|k| k.spawn_offsets().into_iter().map(|c| c + piece_origin))
+            .collect();
+
         let mut field = DefaultField {
             width,
             height,
@@ -186,7 +197,11 @@ impl<P: PieceKind> DefaultField<P> {
             cur_piece: LivePiece::new(bag.next(), &piece_origin),
             hold_piece: None,
             hold_swapped: false,
+
+            topped_out: false,
+
             piece_origin,
+            spawn_area,
 
             lock_delay_actions: None,
 
@@ -223,6 +238,8 @@ impl<P: PieceKind> DefaultField<P> {
     fn set_at(&mut self, Coords(row, col): &Coords, square: Square<P>) {
         *self.lines[*row as usize].get_mut(*col as usize) = square;
     }
+
+    pub fn topped_out(&self) -> bool { self.topped_out }
 
     pub fn cur_piece(&self) -> &LivePiece<P> { &self.cur_piece }
 
@@ -340,7 +357,7 @@ impl<P: PieceKind> DefaultField<P> {
     pub fn project_down(&mut self) -> bool {
         let projected = self.cur_piece.projected_down(&self);
 
-        // make soft drop reset the last move rotation flag but not hard drop or soft drop without movement 
+        // make soft drop reset the last move rotation flag but not hard drop or soft drop without movement
         self.last_move_rotated &= self.cur_piece.coords() == projected.coords();
         self.try_update_cur_piece(projected)
     }
@@ -352,9 +369,19 @@ impl<P: PieceKind> DefaultField<P> {
         self.project_down();
         let clear_type = self.clear_lines();
         self.last_cur_piece_kick = None;
-        self.try_spawn_no_erase(bag);
+        self.topped_out = self.cur_piece_tops_out();
 
+        if !self.topped_out {
+            self.try_spawn_no_erase(bag);
+        }
         clear_type
+    }
+
+    // whether hard dropping the current piece would cause a top out
+    pub fn cur_piece_tops_out(&self) -> bool {
+        let coords = self.cur_piece.coords();
+        coords.iter().all(|Coords(row, _)| *row < self.hidden as i32)
+            || coords.iter().any(|c| self.spawn_area.contains(c))
     }
 
     pub fn clear_lines(&mut self) -> LineClear<P> {
@@ -377,7 +404,6 @@ impl<P: PieceKind> DefaultField<P> {
 
     pub fn line_clear_type(&mut self, n_cleared: usize) -> LineClear<P> {
         let (spin, is_mini) = self.cur_piece.kind().detect_spin(&self);
-        // web_sys::console::log_1(&format!("{}", self.is_clear()).into());
         LineClear::new(n_cleared, spin, is_mini, self.is_clear())
     }
 
@@ -393,7 +419,7 @@ impl<P: PieceKind> DefaultField<P> {
     }
 
     fn erase_cur_piece(&mut self) {
-        for coords in self.cur_piece.coords.clone() {
+        for coords in self.cur_piece.coords().clone() {
             self.set_at(&coords, Square::Empty);
         }
     }
