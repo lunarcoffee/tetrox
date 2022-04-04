@@ -268,13 +268,11 @@ impl Component for Board {
             BoardMessage::RotateCcw => self.field.try_rotate_ccw(&SrsKickTable),
             BoardMessage::Rotate180 => self.field.try_rotate_180(&Tetrio180KickTable),
 
-            BoardMessage::SwapHoldPiece => {
-                let result = self.field.swap_hold_piece(&mut self.bag);
-                if result {
-                    self.timers.cancel_lock_delay();
-                }
-                result
-            }
+            BoardMessage::SwapHoldPiece => self
+                .field
+                .swap_hold_piece(&mut self.bag)
+                .then(|| self.timers.cancel_lock_delay())
+                .is_some(),
             BoardMessage::HardDrop => {
                 self.timers.reset_gravity(ctx);
                 self.timers.cancel_lock_delay();
@@ -285,14 +283,12 @@ impl Component for Board {
 
                 true
             }
-            BoardMessage::LockDelayDrop => {
-                // only lock if the piece is still touching the stack
-                let touching_stack = self.field.cur_piece_cannot_move_down();
-                if touching_stack {
-                    ctx.link().send_message(BoardMessage::HardDrop);
-                }
-                touching_stack
-            }
+            // only lock if the piece is still touching the stack
+            BoardMessage::LockDelayDrop => self
+                .field
+                .cur_piece_cannot_move_down()
+                .then(|| ctx.link().send_message(BoardMessage::HardDrop))
+                .is_some(),
 
             BoardMessage::TickAnimation(animation) => to_true(self.animation_state.tick(ctx, animation)),
             BoardMessage::StopAnimation(animation) => to_false(self.animation_state.stop_animation(animation)),

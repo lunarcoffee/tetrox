@@ -69,12 +69,10 @@ impl GameStatsDrawer {
     // accelerating fade animation and decelerating expand animation
     fn text_animation_updater(data: &AnimationData) -> Option<AnimationData> {
         match data {
-            AnimationData::Float2(opacity, letter_spacing) => (*opacity > 0.0).then(|| {
-                AnimationData::Float2(
-                    opacity * (opacity * (1.0 - 1e-5)).powf(0.15),
-                    letter_spacing + 5e-4 * (1.0 / letter_spacing),
-                )
-            }),
+            AnimationData::Float2(opacity, letter_spacing) if *opacity > 0.0 => Some(AnimationData::Float2(
+                opacity * (opacity * (1.0 - 1e-5)).powf(0.15),
+                letter_spacing + 5e-4 * (1.0 / letter_spacing),
+            )),
             _ => None,
         }
     }

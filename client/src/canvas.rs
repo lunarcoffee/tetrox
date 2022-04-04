@@ -155,6 +155,7 @@ impl CanvasRenderer {
                 context.stroke();
             }
 
+            context.set_global_alpha(self.config.shadow_opacity);
             let shadow_piece = field.shadow_piece();
             for Coords(row, col) in shadow_piece.coords() {
                 self.draw_square(

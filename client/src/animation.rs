@@ -22,7 +22,6 @@ impl AnimationData {
     pub fn extract_float2(&self) -> (f64, f64) {
         match self {
             AnimationData::Float2(a, b) => (*a, *b),
-            _ => panic!("not float2"),
         }
     }
 }

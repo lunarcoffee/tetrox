@@ -28,6 +28,7 @@ pub struct Config {
     pub skin_name: String,
     pub field_zoom: f64,
     pub vertical_offset: i32,
+    pub shadow_opacity: f64,
 
     // field property settings
     pub field_width: usize,
@@ -79,6 +80,7 @@ impl Default for Config {
             skin_name: "tetrox".to_string(),
             field_zoom: 1.0,
             vertical_offset: 130,
+            shadow_opacity: 0.3,
 
             field_width: 10,
             field_height: 40,
@@ -110,6 +112,7 @@ pub enum ConfigMessage {
     SkinName(String),
     FieldZoom(f64),
     VerticalOffset(i32),
+    ShadowOpacity(f64),
 
     FieldWidth(usize),
     FieldHeight(usize),
@@ -232,6 +235,7 @@ impl Component for ConfigPanelWrapper {
             ConfigMessage::SkinName(ref skin_name) => self.config.skin_name = skin_name.to_string(),
             ConfigMessage::FieldZoom(zoom) => self.config.field_zoom = zoom,
             ConfigMessage::VerticalOffset(offset) => self.config.vertical_offset = offset,
+            ConfigMessage::ShadowOpacity(opacity) => self.config.shadow_opacity = opacity,
 
             ConfigMessage::FieldWidth(width) => self.config.field_width = width,
             ConfigMessage::FieldHeight(height) => {
@@ -281,6 +285,7 @@ impl Component for ConfigPanelWrapper {
         let skin_name_callback = make_update_callback!(HtmlSelectElement, ConfigMessage::SkinName);
         let field_zoom_callback = make_update_callback!(HtmlInputElement, ConfigMessage::FieldZoom);
         let offset_callback = make_update_callback!(HtmlInputElement, ConfigMessage::VerticalOffset);
+        let shadow_callback = make_update_callback!(HtmlInputElement, ConfigMessage::ShadowOpacity);
 
         let field_width_callback = make_update_callback!(HtmlInputElement, ConfigMessage::FieldWidth);
         let field_height_callback = make_update_callback!(HtmlInputElement, ConfigMessage::FieldHeight);
@@ -299,12 +304,16 @@ impl Component for ConfigPanelWrapper {
 
         html! {
             <div class="content">
+                // left/right darkening gradient
+                <div class="bg-gradient"></div>
+
                 <Board config={ ReadOnlyConfig(self.config.clone()) }/>
                 <div class="config-panel">
                     { Self::section_heading("Visual") }
                     { Self::select_input("Block skin", crate::SKIN_NAMES, &config.skin_name, skin_name_callback) }
                     { Self::range_input("Field zoom", 0.1, 4.0, 0.05, config.field_zoom, field_zoom_callback) }
                     { Self::range_input("Vertical offset", -2_000, 2_000, 10, config.vertical_offset, offset_callback) }
+                    { Self::range_input("Ghost piece opacity", 0.0, 1.0, 0.05, config.shadow_opacity, shadow_callback) }
 
                     { Self::section_heading("Playfield") }
                     { Self::range_input("Field width", 4, 100, 1, config.field_width, field_width_callback) }
@@ -339,7 +348,7 @@ impl Component for ConfigPanelWrapper {
                         { "github" }
                     </a>
                     <div class="config-option" style="margin: 10px 0 6px 0;">
-                        <input class="config-reset-button" type="button" value={ "Reset all to default" } 
+                        <input class="config-reset-button" type="button" value={ "Reset all to default" }
                                onclick={ reset_defaults_callback }/>
                     </div>
                 </div>

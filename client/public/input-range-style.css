@@ -2,7 +2,7 @@ input[type=range] {
     -webkit-appearance: none;
     background: transparent;
 
-    width: 10vw;
+    width: 12rem;
 }
 
 input[type=range]:focus {
@@ -14,11 +14,11 @@ input[type=range]::-webkit-slider-thumb {
     -webkit-appearance: none;
     background: #c1b5e0;
 
-    margin-top: -4px;
+    margin-top: -6px;
 
-    height: 13px;
-    width: 6px;
-    border: 2px solid #c1b5e0;
+    height: 16px;
+    width: px;
+    border: 0 solid transparent;
     border-radius: 4px;
 
     cursor: pointer;
@@ -27,12 +27,12 @@ input[type=range]::-webkit-slider-thumb {
 
 /* firefox thumb */
 input[type=range]::-moz-range-thumb {
-    height: 10px;
-    width: 2px;
-    border: 2px solid #c1b5e0;
-    border-radius: 3px;
-
     background: #c1b5e0;
+
+    height: 16px;
+    width: 8px;
+    border: 0 solid transparent;
+    border-radius: 4px;
 
     cursor: pointer;
 }

@@ -50,14 +50,27 @@ body {
 
 .content {
     height: 100vh;
-    width: 68vw;
+    width: 100vw;
 
     margin: auto;
 }
 
+.bg-gradient {
+    position: absolute;
+    top: 0;
+    left: 0;
+
+    width: 100vw;
+    height: 100vh;
+
+    background: linear-gradient(to right, #00000080 0vw, transparent 25vw, transparent 75vw, #00000080 100vw);
+}
+
 .config-panel {
     color: #ccc;
-    background: linear-gradient(90deg, transparent 0%, #00000080 100%);
+
+    mask-image: linear-gradient(to bottom, transparent 0%, black 40px, black calc(100% - 40px), transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 40px, black calc(100% - 40px), transparent 100%);
 
     justify-self: flex-end;
     text-align: right;
