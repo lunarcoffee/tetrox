@@ -41,6 +41,7 @@ pub enum BoardMessage {
 
     SwapHoldPiece,
     HardDrop,
+    GravityDrop,
     LockDelayDrop,
 
     TickAnimation(Animation),
@@ -82,12 +83,10 @@ impl BoardTimers {
         let link = ctx.link().clone();
         if self.config.gravity_enabled {
             self.gravity = Some(Interval::new(self.config.gravity_delay, move || {
-                link.send_message(BoardMessage::MoveDown);
+                link.send_message(BoardMessage::GravityDrop);
             }));
         }
     }
-
-    fn cancel_gravity(&mut self) { self.gravity.take().map(|timer| timer.cancel()); }
 
     fn reset_lock_delay(&mut self, ctx: &Context<Board>) {
         let link = ctx.link().clone();
@@ -171,7 +170,7 @@ impl Board {
                 self.prev_lock_delay_actions = n_actions_now;
 
                 // cap how many such actions can occur
-                if n_actions_now == 30 {
+                if n_actions_now == self.config.move_limit && self.config.move_limit_enabled {
                     ctx.link().send_message(BoardMessage::HardDrop);
                 }
             }
@@ -294,6 +293,11 @@ impl Component for Board {
             BoardMessage::LockDelayDrop => (self.field.cur_piece_cannot_move_down() && self.config.auto_lock_enabled)
                 .then(|| ctx.link().send_message(BoardMessage::HardDrop))
                 .is_some(),
+            BoardMessage::GravityDrop => self
+                .config
+                .gravity_enabled
+                .then(|| self.field.try_shift(1, 0))
+                .is_some(),
 
             BoardMessage::TickAnimation(animation) => to_true(self.animation_state.tick(ctx, animation)),
             BoardMessage::StopAnimation(animation) => to_false(self.animation_state.stop_animation(animation)),
@@ -316,11 +320,6 @@ impl Component for Board {
         self.timers = BoardTimers::new(ctx, self.animation_state.get_active(), self.config.clone());
         self.timers.reset_gravity(ctx);
         self.timers.reset_lock_delay(ctx);
-
-        // gravity has already been reset above
-        if !self.config.gravity_enabled {
-            self.timers.cancel_gravity();
-        }
 
         let field_changed = self.config.field_width != self.field.width()
             || self.config.field_height != self.field.height()

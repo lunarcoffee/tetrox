@@ -39,9 +39,11 @@ pub struct Config {
     // gameplay
     pub gravity_delay: u32,
     pub lock_delay: u32,
+    pub move_limit: usize,
     pub topping_out_enabled: bool,
     pub auto_lock_enabled: bool,
     pub gravity_enabled: bool,
+    pub move_limit_enabled: bool,
 
     // controls
     pub inputs: BiMap<Input, Keybind>,
@@ -92,9 +94,11 @@ impl Default for Config {
 
             gravity_delay: 1_000,
             lock_delay: 500,
+            move_limit: 30,
             topping_out_enabled: true,
             auto_lock_enabled: true,
             gravity_enabled: true,
+            move_limit_enabled: true,
 
             delayed_auto_shift: 280,
             auto_repeat_rate: 50,
@@ -126,9 +130,11 @@ pub enum ConfigMessage {
 
     GravityDelay(u32),
     LockDelay(u32),
+    MoveLimit(usize),
     ToggleToppingOut,
     ToggleAutoLock,
     ToggleGravity,
+    ToggleMoveLimit,
 
     DelayedAutoShift(u32),
     AutoRepeatRate(u32),
@@ -270,9 +276,11 @@ impl Component for ConfigPanelWrapper {
 
             ConfigMessage::GravityDelay(gravity) => self.config.gravity_delay = gravity,
             ConfigMessage::LockDelay(lock_delay) => self.config.lock_delay = lock_delay,
+            ConfigMessage::MoveLimit(limit) => self.config.move_limit = limit,
             ConfigMessage::ToggleToppingOut => self.config.topping_out_enabled ^= true,
             ConfigMessage::ToggleAutoLock => self.config.auto_lock_enabled ^= true,
             ConfigMessage::ToggleGravity => self.config.gravity_enabled ^= true,
+            ConfigMessage::ToggleMoveLimit => self.config.move_limit_enabled ^= true,
 
             ConfigMessage::DelayedAutoShift(das) => self.config.delayed_auto_shift = das,
             ConfigMessage::AutoRepeatRate(arr) => self.config.auto_repeat_rate = arr,
@@ -321,6 +329,7 @@ impl Component for ConfigPanelWrapper {
 
         let gravity_cb = make_update_callback!(HtmlInputElement, ConfigMessage::GravityDelay);
         let lock_delay_cb = make_update_callback!(HtmlInputElement, ConfigMessage::LockDelay);
+        let move_limit_cb = make_update_callback!(HtmlInputElement, ConfigMessage::MoveLimit);
 
         let das_cb = make_update_callback!(HtmlInputElement, ConfigMessage::DelayedAutoShift);
         let arr_cb = make_update_callback!(HtmlInputElement, ConfigMessage::AutoRepeatRate);
@@ -351,10 +360,12 @@ impl Component for ConfigPanelWrapper {
                     { Self::section_heading("Gameplay") }
                     { Self::range_input("Gravity delay", 10, 5_000, 5, config.gravity_delay, gravity_cb) }
                     { Self::range_input("Lock delay", 10, 3_000, 5, config.lock_delay, lock_delay_cb) }
+                    { Self::range_input("Move limit", 1, 200, 1, config.move_limit, move_limit_cb) }
                     <div class="config-button-box">
                         { Self::toggle_input(ctx, "Topping out", config.topping_out_enabled, ConfigMessage::ToggleToppingOut) }
-                        { Self::toggle_input(ctx, "Auto lock", config.auto_lock_enabled, ConfigMessage::ToggleAutoLock) }
+                        { Self::toggle_input(ctx, "Lock delay", config.auto_lock_enabled, ConfigMessage::ToggleAutoLock) }
                         { Self::toggle_input(ctx, "Gravity", config.gravity_enabled, ConfigMessage::ToggleGravity) }
+                        { Self::toggle_input(ctx, "Move limit", config.move_limit_enabled, ConfigMessage::ToggleMoveLimit) }
                     </div>
 
                     { Self::section_heading("Keybinds") }
