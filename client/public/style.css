@@ -63,7 +63,7 @@ body {
     width: 100vw;
     height: 100vh;
 
-    background: linear-gradient(to right, #00000080 0vw, transparent 25vw, transparent 75vw, #00000080 100vw);
+    background: linear-gradient(to right, #00000080 0vw, transparent 26vw, transparent 74vw, #00000080 100vw);
 }
 
 .config-panel {
@@ -88,6 +88,10 @@ body {
 }
 
 .config-panel::-webkit-scrollbar {
+    display: none;
+}
+
+.config-panel-hidden {
     display: none;
 }
 
@@ -190,14 +194,24 @@ body {
     white-space: nowrap;
 }
 
-.game-stats-clear-text {
+.game-stats>p {
     color: #ccc;
-
     font-family: "IBM Plex Sans";
-    font-size: 1.8rem;
-    direction: rtl;
 
+    direction: rtl;
+}
+
+.game-stats-clear-text {
+    font-size: 1.8rem;
     margin-bottom: -0.7rem;
+}
+
+.game-stats-b2b-text {
+    font-size: 1.4rem;
+}
+
+.game-stats-combo-text {
+    font-size: 1.4rem;
 }
 
 .field {

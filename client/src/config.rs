@@ -20,6 +20,7 @@ pub enum Input {
     Rotate180,
     SwapHoldPiece,
     Reset,
+    ShowHideUi,
 }
 
 #[derive(PartialEq, Clone, Serialize, Deserialize)]
@@ -76,6 +77,7 @@ impl Default for Config {
             (Input::Rotate180, "Shift"),
             (Input::SwapHoldPiece, "c"),
             (Input::Reset, "`"),
+            (Input::ShowHideUi, "F9"),
         ]
         .into_iter()
         .map(|(i, k)| (i, k.to_string()))
@@ -84,7 +86,7 @@ impl Default for Config {
         Config {
             skin_name: "tetrox".to_string(),
             field_zoom: 1.0,
-            vertical_offset: 130,
+            vertical_offset: 70,
             shadow_opacity: 0.3,
 
             field_width: 10,
@@ -145,11 +147,14 @@ pub enum ConfigMessage {
     RebindInput(String),
 
     ResetToDefault,
+    ToggleUi,
 }
 
 // config panel which wraps a `Board` component
 pub struct ConfigPanelWrapper {
     config: Config,
+
+    ui_enabled: bool,
     capturing_input: Option<Input>, // `Some` when capturing a new keybind
 }
 
@@ -232,8 +237,8 @@ impl ConfigPanelWrapper {
         html! {
             <div class="config-option">
                 <input class={ format!("config-toggle-button-{}", value_on_off) }
-                       type="button" 
-                       value={ label } 
+                       type="button"
+                       value={ label }
                        onclick={ toggle_callback }/>
             </div>
         }
@@ -241,8 +246,8 @@ impl ConfigPanelWrapper {
 
     fn store_config(&self) {
         let storage = web_sys::window().unwrap().local_storage().unwrap().unwrap();
-        let json = serde_json::to_string(&self.config).expect("amongus");
-        storage.set_item(CONFIG_LOCAL_STORAGE_KEY, &json).expect("sussus");
+        let json = serde_json::to_string(&self.config).unwrap();
+        storage.set_item(CONFIG_LOCAL_STORAGE_KEY, &json).unwrap();
     }
 }
 
@@ -255,11 +260,20 @@ impl Component for ConfigPanelWrapper {
 
         ConfigPanelWrapper {
             config: Config::from_local_storage(storage).unwrap_or_else(|| Config::default()),
+
+            ui_enabled: true,
             capturing_input: None,
         }
     }
 
     fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
+        // indirect or non-config value updates
+        match msg {
+            ConfigMessage::ResetToDefault => self.config = Config::default(),
+            ConfigMessage::ToggleUi => self.ui_enabled ^= true,
+            _ => {}
+        }
+
         // regular value updates
         match msg {
             ConfigMessage::SkinName(ref skin_name) => self.config.skin_name = skin_name.to_string(),
@@ -285,8 +299,6 @@ impl Component for ConfigPanelWrapper {
             ConfigMessage::DelayedAutoShift(das) => self.config.delayed_auto_shift = das,
             ConfigMessage::AutoRepeatRate(arr) => self.config.auto_repeat_rate = arr,
             ConfigMessage::SoftDropRate(sdr) => self.config.soft_drop_rate = sdr,
-
-            ConfigMessage::ResetToDefault => self.config = Config::default(),
             _ => {}
         }
 
@@ -317,6 +329,12 @@ impl Component for ConfigPanelWrapper {
             };
         }
 
+        let show_hide_keybind = self.config.inputs.get_by_left(&Input::ShowHideUi);
+        let show_hide_keybind = show_hide_keybind.unwrap_or(&"".to_string()).to_string();
+        let show_hide_ui_cb = ctx
+            .link()
+            .batch_callback(move |e: KeyboardEvent| (show_hide_keybind == e.key()).then(|| ConfigMessage::ToggleUi));
+
         // TODO: just pass the message into the input factory function?
         let skin_name_cb = make_update_callback!(HtmlSelectElement, ConfigMessage::SkinName);
         let field_zoom_cb = make_update_callback!(HtmlInputElement, ConfigMessage::FieldZoom);
@@ -340,23 +358,12 @@ impl Component for ConfigPanelWrapper {
         let config = &self.config;
 
         html! {
-            <div class="content">
+            <div class="content" onkeydown={ show_hide_ui_cb }>
                 // left/right darkening gradient
                 <div class="bg-gradient"></div>
 
                 <Board config={ ReadOnlyConfig(self.config.clone()) }/>
-                <div class="config-panel">
-                    { Self::section_heading("Visual") }
-                    { Self::select_input("Block skin", crate::SKIN_NAMES, &config.skin_name, skin_name_cb) }
-                    { Self::range_input("Field zoom", 0.1, 4.0, 0.05, config.field_zoom, field_zoom_cb) }
-                    { Self::range_input("Vertical offset", -2_000, 2_000, 10, config.vertical_offset, offset_cb) }
-                    { Self::range_input("Ghost piece opacity", 0.0, 1.0, 0.05, config.shadow_opacity, shadow_cb) }
-
-                    { Self::section_heading("Playfield") }
-                    { Self::range_input("Field width", 4, 100, 1, config.field_width, field_width_cb) }
-                    { Self::range_input("Field height", 3, 100, 1, config.field_height / 2, field_height_cb) }
-                    { Self::range_input("Queue length", 0, 7, 1, config.queue_len, queue_len_cb) }
-
+                <div class={ format!("config-panel{}", if self.ui_enabled { "" } else { "-hidden" }) }>
                     { Self::section_heading("Gameplay") }
                     { Self::range_input("Gravity delay", 10, 5_000, 5, config.gravity_delay, gravity_cb) }
                     { Self::range_input("Lock delay", 10, 3_000, 5, config.lock_delay, lock_delay_cb) }
@@ -367,6 +374,17 @@ impl Component for ConfigPanelWrapper {
                         { Self::toggle_input(ctx, "Gravity", config.gravity_enabled, ConfigMessage::ToggleGravity) }
                         { Self::toggle_input(ctx, "Move limit", config.move_limit_enabled, ConfigMessage::ToggleMoveLimit) }
                     </div>
+
+                    { Self::section_heading("Playfield") }
+                    { Self::range_input("Field width", 4, 100, 1, config.field_width, field_width_cb) }
+                    { Self::range_input("Field height", 3, 100, 1, config.field_height / 2, field_height_cb) }
+                    { Self::range_input("Queue length", 0, 7, 1, config.queue_len, queue_len_cb) }
+
+                    { Self::section_heading("Appearance") }
+                    { Self::select_input("Block skin", crate::SKIN_NAMES, &config.skin_name, skin_name_cb) }
+                    { Self::range_input("Field zoom", 0.1, 4.0, 0.05, config.field_zoom, field_zoom_cb) }
+                    { Self::range_input("Vertical offset", -2_000, 2_000, 10, config.vertical_offset, offset_cb) }
+                    { Self::range_input("Ghost piece opacity", 0.0, 1.0, 0.05, config.shadow_opacity, shadow_cb) }
 
                     { Self::section_heading("Keybinds") }
                     <div class="config-button-box">
@@ -379,6 +397,7 @@ impl Component for ConfigPanelWrapper {
                         { self.button_capture_input(ctx, "Rotate 180", Input::Rotate180) }
                         { self.button_capture_input(ctx, "Swap hold", Input::SwapHoldPiece) }
                         { self.button_capture_input(ctx, "Reset", Input::Reset) }
+                        { self.button_capture_input(ctx, "Show/hide UI", Input::ShowHideUi) }
                     </div>
 
                     { Self::section_heading("Handling") }

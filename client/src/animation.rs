@@ -12,6 +12,8 @@ use crate::board::{Board, BoardMessage};
 pub enum Animation {
     LineClearText,
     PerfectClearText,
+    BackToBackText,
+    ComboText,
 }
 
 pub enum AnimationData {

@@ -134,6 +134,7 @@ impl Board {
                     Input::SwapHoldPiece => ctx.link().send_message(BoardMessage::SwapHoldPiece),
                     Input::HardDrop => inputs.set_pressed_msg(Input::HardDrop, ctx, BoardMessage::HardDrop),
                     Input::Reset => ctx.link().send_message(BoardMessage::Reset),
+                    _ => {}
                 }
                 true
             })
@@ -151,7 +152,11 @@ impl Board {
     fn process_lock_delay(&mut self, ctx: &Context<Self>, msg: BoardMessage) {
         // activate lock delay after the piece touches the stack while falling
         match msg {
-            BoardMessage::MoveLeft | BoardMessage::MoveRight | BoardMessage::MoveDown | BoardMessage::ProjectDown => {
+            BoardMessage::MoveLeft
+            | BoardMessage::MoveRight
+            | BoardMessage::MoveDown
+            | BoardMessage::ProjectDown
+            | BoardMessage::GravityDrop => {
                 if self.field.cur_piece_cannot_move_down() {
                     // only reset the lock delay the first time the piece touches the stack
                     if self.field.actions_since_lock_delay().is_none() {

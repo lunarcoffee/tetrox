@@ -157,26 +157,22 @@ impl CanvasRenderer {
 
             context.set_global_alpha(self.config.shadow_opacity);
             let shadow_piece = field.shadow_piece();
-            for Coords(row, col) in shadow_piece.coords() {
-                self.draw_square(
-                    shadow_piece.kind().asset_name(),
-                    &context,
-                    *row as usize * SQUARE_MUL,
-                    *col as usize * SQUARE_MUL,
-                );
+            let topped_out = field.topped_out() && self.config.topping_out_enabled;
+
+            if !topped_out {
+                for Coords(row, col) in shadow_piece.coords() {
+                    let kind = shadow_piece.kind();
+                    let asset = kind.asset_name();
+                    self.draw_square(asset, &context, *row as usize * SQUARE_MUL, *col as usize * SQUARE_MUL);
+                }
             }
 
             context.set_global_alpha(1.0);
             for (row, line) in field.lines().iter().enumerate() {
                 for (col, square) in line.squares().iter().enumerate() {
                     if let Square::Filled(kind) = square {
-                        let topped_out = field.topped_out() && self.config.topping_out_enabled;
-                        self.draw_square(
-                            if topped_out { "grey" } else { kind.asset_name() },
-                            &context,
-                            row * SQUARE_MUL,
-                            col * SQUARE_MUL,
-                        );
+                        let asset = if topped_out { "grey" } else { kind.asset_name() };
+                        self.draw_square(asset, &context, row * SQUARE_MUL, col * SQUARE_MUL);
                     }
                 }
             }
