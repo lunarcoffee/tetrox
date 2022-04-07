@@ -308,8 +308,9 @@ impl<P: PieceKind> DefaultField<P> {
                     // used for checking spins (e.g t-spins)
                     self.last_cur_piece_kick = Some(kick);
                 }
+                // update if a fitting kicked rotation exists
                 self.try_update_cur_piece(piece)
-            }) // update if a fitting kicked rotation exists
+            })
             .unwrap_or(false)
     }
 
