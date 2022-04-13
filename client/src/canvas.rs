@@ -15,7 +15,7 @@ use tetrox::{
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
-use crate::board::AssetCache;
+use crate::{board::AssetCache, config::Config};
 
 pub const SQUARE_WIDTH: usize = 36; // the size of each square on the field
 
@@ -25,7 +25,8 @@ pub const PIECE_HEIGHT: usize = SQUARE_WIDTH * 3; // height of hold/queue piece
 pub const SIDE_BAR_WIDTH: usize = SQUARE_WIDTH * 5; // width of hold/queue panels
 pub const SIDE_BAR_PADDING: usize = SQUARE_WIDTH / 6; // bottom padding of hold/queue panels
 
-fn draw_to_canvas_ref_effect<'a, P: PieceKind + 'static, G: Html>(
+fn get_canvas_drawer<'a, P: PieceKind + 'static, G: Html>(
+    config: &'a Config,
     canvas_ref: &NodeRef<G>,
     field: &'a DefaultField<P>,
     asset_cache: &'a AssetCache,
@@ -35,15 +36,12 @@ fn draw_to_canvas_ref_effect<'a, P: PieceKind + 'static, G: Html>(
         let canvas = node.unchecked_into::<HtmlCanvasElement>();
         let context = canvas.get_context("2d").unwrap().unwrap();
         let context = context.dyn_into::<CanvasRenderingContext2d>().unwrap();
-        CanvasDrawer::new(asset_cache, field, context)
+        CanvasDrawer::new(config, asset_cache, field, context)
     })
 }
 
 #[component]
-pub fn HoldPieceCanvas<'a, P: PieceKind + 'static, G: Html>(cx: &'a Scope<'a>) -> View<G> {
-    let field = cx.use_context::<Signal<DefaultField<P>>>();
-    let asset_cache = cx.use_context::<AssetCache>();
-
+pub fn HoldPiece<'a, P: PieceKind + 'static, G: Html>(cx: &'a Scope<'a>) -> View<G> {
     let hold_piece_ref = cx.create_node_ref();
     let view = view! { cx,
         canvas(
@@ -54,19 +52,20 @@ pub fn HoldPieceCanvas<'a, P: PieceKind + 'static, G: Html>(cx: &'a Scope<'a>) -
         )
     };
 
+    let config = cx.use_context::<Signal<Config>>();
+    let field = cx.use_context::<Signal<DefaultField<P>>>();
+    let asset_cache = cx.use_context::<AssetCache>();
+
     cx.create_effect(|| {
-        let field = field.get();
-        draw_to_canvas_ref_effect(hold_piece_ref, &field, asset_cache).map(|c| c.draw_hold_piece());
+        get_canvas_drawer(&config.get(), hold_piece_ref, &field.get(), asset_cache).map(|c| c.draw_hold_piece());
     });
 
     view
 }
 
 #[component]
-pub fn FieldCanvas<'a, P: PieceKind + 'static, G: Html>(cx: &'a Scope<'a>) -> View<G> {
+pub fn Field<'a, P: PieceKind + 'static, G: Html>(cx: &'a Scope<'a>) -> View<G> {
     let field = cx.use_context::<Signal<DefaultField<P>>>();
-    let asset_cache = cx.use_context::<AssetCache>();
-
     let field_ref = cx.create_node_ref();
     let view = view! { cx,
         canvas(
@@ -78,9 +77,11 @@ pub fn FieldCanvas<'a, P: PieceKind + 'static, G: Html>(cx: &'a Scope<'a>) -> Vi
         )
     };
 
+    let config = cx.use_context::<Signal<Config>>();
+    let asset_cache = cx.use_context::<AssetCache>();
+
     cx.create_effect(|| {
-        let field = field.get();
-        draw_to_canvas_ref_effect(field_ref, &field, asset_cache).map(|c| c.draw_field());
+        get_canvas_drawer(&config.get(), field_ref, &field.get(), asset_cache).map(|c| c.draw_field());
     });
 
     view
@@ -92,38 +93,45 @@ pub struct NextQueueProps<'a, P: PieceKind> {
 }
 
 #[component]
-pub fn NextQueueCanvas<'a, P: PieceKind + 'static, G: Html>(cx: &'a Scope<'a>, bag: NextQueueProps<'a, P>) -> View<G> {
-    let field = cx.use_context::<Signal<DefaultField<P>>>();
-    let asset_cache = cx.use_context::<AssetCache>();
-
+pub fn NextQueue<'a, P: PieceKind + 'static, G: Html>(cx: &'a Scope<'a>, props: NextQueueProps<'a, P>) -> View<G> {
+    let config = cx.use_context::<Signal<Config>>();
     let next_queue_ref = cx.create_node_ref();
     let view = view! { cx,
         canvas(
             ref=next_queue_ref,
             class="next-queue-canvas",
             width={ SIDE_BAR_WIDTH },
-            height={ LABEL_HEIGHT + PIECE_HEIGHT * 5 + SIDE_BAR_PADDING }, // TODO: config.queue_len
+            height={ LABEL_HEIGHT + PIECE_HEIGHT * config.get().queue_len + SIDE_BAR_PADDING },
         )
     };
 
+    let field = cx.use_context::<Signal<DefaultField<P>>>();
+    let asset_cache = cx.use_context::<AssetCache>();
+
     cx.create_effect(|| {
-        let field = field.get();
-        let bag = bag.bag.get();
-        draw_to_canvas_ref_effect(next_queue_ref, &field, asset_cache).map(|c| c.draw_next_queue(bag.clone()));
+        get_canvas_drawer(&config.get(), next_queue_ref, &field.get(), asset_cache)
+            .map(|c| c.draw_next_queue(props.bag.get().clone()));
     });
 
     view
 }
 
 pub struct CanvasDrawer<'a, P: PieceKind> {
+    config: &'a Config,
     asset_cache: &'a AssetCache,
     field: &'a DefaultField<P>,
     context: CanvasRenderingContext2d,
 }
 
 impl<'a, P: PieceKind> CanvasDrawer<'a, P> {
-    pub fn new(asset_cache: &'a AssetCache, field: &'a DefaultField<P>, context: CanvasRenderingContext2d) -> Self {
+    pub fn new(
+        config: &'a Config,
+        asset_cache: &'a AssetCache,
+        field: &'a DefaultField<P>,
+        context: CanvasRenderingContext2d,
+    ) -> Self {
         CanvasDrawer {
+            config,
             asset_cache,
             field,
             context,
@@ -192,11 +200,10 @@ impl<'a, P: PieceKind> CanvasDrawer<'a, P> {
             ctx.stroke();
         }
 
-        // ctx.set_global_alpha(self.config.shadow_opacity); TODO:
+        ctx.set_global_alpha(self.config.shadow_opacity);
         ctx.set_global_alpha(0.3);
         let shadow_piece = field.shadow_piece();
-        // let topped_out = field.topped_out() && self.config.topping_out_enabled; TODO:
-        let topped_out = false;
+        let topped_out = field.topped_out() && self.config.topping_out_enabled;
 
         if !topped_out {
             for Coords(row, col) in shadow_piece.coords() {
@@ -218,8 +225,10 @@ impl<'a, P: PieceKind> CanvasDrawer<'a, P> {
     }
 
     fn draw_next_queue(&self, bag: Rc<RefCell<SingleBag<P>>>) {
+        let queue_len = self.config.queue_len;
+
         // total height of queue in pixels
-        let nq_h_px = (LABEL_HEIGHT + PIECE_HEIGHT * 5 + SIDE_BAR_PADDING) as f64; // TODO: config.queue_len
+        let nq_h_px = (LABEL_HEIGHT + PIECE_HEIGHT * self.config.queue_len + SIDE_BAR_PADDING) as f64;
 
         let ctx = &self.context;
         ctx.set_fill_style(&"black".into());
@@ -236,8 +245,8 @@ impl<'a, P: PieceKind> CanvasDrawer<'a, P> {
         ctx.set_font("18px 'IBM Plex Sans'");
         ctx.fill_text("next", 8.0, 24.0).unwrap();
 
-        // does this refcell usage work lol
-        let queue = bag.borrow_mut().peek().take(5).cloned().collect::<Vec<_>>(); // TODO: config.queue_len
+        // TODO: does this refcell usage work lol
+        let queue = bag.borrow_mut().peek().take(queue_len).cloned().collect::<Vec<_>>();
 
         for (nth, kind) in queue.iter().enumerate() {
             self.draw_piece(
@@ -256,7 +265,9 @@ impl<'a, P: PieceKind> CanvasDrawer<'a, P> {
             .collect();
 
         let offset = Coords(y_offset as i32, x_offset as i32);
-        let final_coords = center_coords_around_origin(base_coords).into_iter().map(|c| c + offset);
+        let final_coords = Self::center_coords_around_origin(base_coords)
+            .into_iter()
+            .map(|c| c + offset);
 
         for Coords(row, col) in final_coords {
             self.draw_square(kind.asset_name(), row as usize, col as usize);
@@ -278,19 +289,19 @@ impl<'a, P: PieceKind> CanvasDrawer<'a, P> {
             )
             .unwrap();
     }
-}
 
-fn center_coords_around_origin(coords: Vec<Coords>) -> Vec<Coords> {
-    let min_col = coords.iter().min_by_key(|Coords(_, col)| col).unwrap().1;
-    let max_col = coords.iter().max_by_key(|Coords(_, col)| col).unwrap().1;
-    let min_row = coords.iter().min_by_key(|Coords(row, _)| row).unwrap().0;
-    let max_row = coords.iter().max_by_key(|Coords(row, _)| row).unwrap().0;
+    fn center_coords_around_origin(coords: Vec<Coords>) -> Vec<Coords> {
+        let min_col = coords.iter().min_by_key(|Coords(_, col)| col).unwrap().1;
+        let max_col = coords.iter().max_by_key(|Coords(_, col)| col).unwrap().1;
+        let min_row = coords.iter().min_by_key(|Coords(row, _)| row).unwrap().0;
+        let max_row = coords.iter().max_by_key(|Coords(row, _)| row).unwrap().0;
 
-    let offset = Coords((max_row + min_row) / 2, (max_col + min_col) / 2);
-    coords
-        .into_iter()
-        // (0, 0) is not the center since images are drawn from the top-left corner
-        // the actual center is half a `SQUARE_WIDTH` away in both directions
-        .map(|c| c - offset - Coords(SQUARE_WIDTH as i32 / 2, SQUARE_WIDTH as i32 / 2))
-        .collect()
+        let offset = Coords((max_row + min_row) / 2, (max_col + min_col) / 2);
+        coords
+            .into_iter()
+            // (0, 0) is not the center since images are drawn from the top-left corner
+            // the actual center is half a `SQUARE_WIDTH` away in both directions
+            .map(|c| c - offset - Coords(SQUARE_WIDTH as i32 / 2, SQUARE_WIDTH as i32 / 2))
+            .collect()
+    }
 }

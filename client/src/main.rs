@@ -1,11 +1,12 @@
-use game::Game;
 use sycamore::{component, generic_node::Html, prelude::Scope, view, view::View};
 use tetrox::{tetromino::SrsTetromino, PieceKind};
+use crate::config::ConfigPanel;
 
 mod board;
 mod game;
 mod config;
 mod canvas;
+mod menu;
 
 pub const SKIN_NAMES: &[&str] = &["tetrox", "gradient", "inset", "rounded", "solid"];
 
@@ -29,7 +30,7 @@ fn AssetPreloader<'a, G: Html>(cx: &'a Scope<'a>) -> View<G> {
     view! { cx,
         div(class="bg-gradient")
         (if *n_loaded.get() == n_total { // show the game once all assets have loaded
-            view! { cx, Game {} } 
+            view! { cx, ConfigPanel {} } 
         } else {
             view! { cx, p(class="loading-text") { "Loading assets... (" (n_loaded.get()) "/" (n_total) ")" } }
         })

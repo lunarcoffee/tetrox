@@ -1,7 +1,4 @@
-use std::{cell::UnsafeCell, marker::PhantomData};
-
 use crate::board::Board;
-use crate::config::ConfigPanel;
 
 use sycamore::{
     component,
@@ -11,10 +8,10 @@ use sycamore::{
     view::View,
 };
 use sycamore_router::{HistoryIntegration, Route, Router};
-use tetrox::{tetromino::SrsTetromino, Bag, PieceKind};
+use tetrox::tetromino::SrsTetromino;
 
 #[derive(Route)]
-enum Routes {
+pub enum Routes {
     #[to("/")]
     Home,
     #[not_found]
@@ -30,12 +27,9 @@ pub fn Game<'a, G: Html>(cx: &'a Scope<'a>) -> View<G> {
                 view! { cx,
                     div(class="content") {
                         (match route.get().as_ref() {
-                            Routes::Home => view! { cx,
-                                Board::<SrsTetromino, G> {}
-                            },
+                            Routes::Home => view! { cx, Board::<SrsTetromino, G> {} },
                             Routes::NotFound => view! { cx, p(class="loading-text") { "not found" } }
                         })
-                        ConfigPanel {}
                     }
                 }
             }
