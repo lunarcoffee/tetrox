@@ -68,6 +68,7 @@ body {
     height: 100vh;
 
     background: linear-gradient(to right, #00000080 0vw, transparent 26vw, transparent 74vw, #00000080 100vw);
+    z-index: -1;
 }
 
 .config-panel {
@@ -177,7 +178,7 @@ body {
     flex-direction: row;
 }
 
-.field-left-panel {
+.field-panel {
     display: flex;
     flex-direction: column;
 }

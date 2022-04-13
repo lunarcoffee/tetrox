@@ -2,7 +2,10 @@ use game::Game;
 use sycamore::{component, generic_node::Html, prelude::Scope, view, view::View};
 use tetrox::{tetromino::SrsTetromino, PieceKind};
 
+mod board;
 mod game;
+mod config;
+mod canvas;
 
 pub const SKIN_NAMES: &[&str] = &["tetrox", "gradient", "inset", "rounded", "solid"];
 
@@ -19,18 +22,17 @@ fn AssetPreloader<'a, G: Html>(cx: &'a Scope<'a>) -> View<G> {
                 view! { cx, img(class="loading-asset", src=src, on:load=|_| { n_loaded.set(*n_loaded.get() + 1) }) }
             })
         })
-        .collect::<Vec<_>>();
-
+        // collect to use iterator and start image loading
+        .collect::<Vec<View<G>>>();
+        
     let n_total = assets.len();
-    let assets_view = View::new_fragment(assets);
-
-    if *n_loaded.get() < n_total {
-        view! { cx, Game {} }
-    } else {
-        view! { cx,
-            p(class="loading-text") { "Loading assets... (" (n_loaded.get()) "/" (n_total) ")" }
-            (assets_view)
-        }
+    view! { cx,
+        div(class="bg-gradient")
+        (if *n_loaded.get() == n_total { // show the game once all assets have loaded
+            view! { cx, Game {} } 
+        } else {
+            view! { cx, p(class="loading-text") { "Loading assets... (" (n_loaded.get()) "/" (n_total) ")" } }
+        })
     }
 }
 

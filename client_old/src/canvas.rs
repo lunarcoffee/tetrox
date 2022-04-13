@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use tetrox::{
     field::{DefaultField, Square},
-    tetromino::{SingleBag, SrsTetromino},
-    Bag, Coords, PieceKind,
+    tetromino::SrsTetromino,
+    Bag, Coords, PieceKind, SingleBag,
 };
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, HtmlImageElement};

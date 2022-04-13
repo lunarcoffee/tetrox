@@ -10,7 +10,8 @@ use crate::input::InputStates;
 use gloo_timers::callback::{Interval, Timeout};
 use tetrox::{
     field::DefaultField,
-    tetromino::{SingleBag, SrsKickTable, SrsTetromino, Tetrio180KickTable},
+    tetromino::{SrsKickTable, SrsTetromino, Tetrio180KickTable},
+    SingleBag,
 };
 use web_sys::HtmlElement;
 use yew::{html, Component, Context, Html, KeyboardEvent, NodeRef, Properties};

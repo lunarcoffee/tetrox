@@ -1,11 +1,10 @@
-use std::{mem, ops};
+use std::ops;
 
 use num_traits::ToPrimitive;
-use rand::prelude::SliceRandom;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
-use crate::{field::DefaultField, Bag, Coords, CoordsFloat, KickTable, KickTable180, PieceKind, RotationState};
+use crate::{field::DefaultField, Coords, CoordsFloat, KickTable, KickTable180, PieceKind, RotationState};
 
 #[derive(Copy, Clone, Debug, EnumIter, PartialEq, Eq, Hash)]
 pub enum SrsTetromino {
@@ -107,44 +106,6 @@ impl PieceKind for SrsTetromino {
     fn iter() -> Box<dyn Iterator<Item = Self>> { Box::new(<Self as IntoEnumIterator>::iter()) }
 
     fn n_kinds() -> usize { 7 }
-}
-
-pub struct SingleBag<P: PieceKind> {
-    bag: Vec<P>,
-}
-
-impl<P: PieceKind> SingleBag<P> {
-    pub fn new() -> Self {
-        let mut bag = SingleBag { bag: vec![] };
-        bag.update_bag();
-        bag.update_bag();
-        bag
-    }
-
-    fn update_bag(&mut self) {
-        if self.bag.len() <= P::n_kinds() {
-            let mut next_bag = P::iter().collect::<Vec<_>>();
-            next_bag.shuffle(&mut rand::thread_rng());
-
-            // prepend to preserve peek order
-            mem::swap(&mut self.bag, &mut next_bag);
-            self.bag.extend(next_bag);
-        }
-    }
-}
-
-impl<P: PieceKind> Bag<P> for SingleBag<P> {
-    fn next(&mut self) -> P {
-        self.update_bag();
-        self.bag.pop().unwrap()
-    }
-
-    fn peek(&mut self) -> Box<dyn Iterator<Item = &P> + '_> {
-        self.update_bag();
-        Box::new(self.bag.iter().rev())
-    }
-
-    fn lookahead(&self) -> usize { P::n_kinds() }
 }
 
 pub struct SrsKickTable;

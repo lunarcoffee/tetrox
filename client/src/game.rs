@@ -1,3 +1,8 @@
+use std::{cell::UnsafeCell, marker::PhantomData};
+
+use crate::board::Board;
+use crate::config::ConfigPanel;
+
 use sycamore::{
     component,
     generic_node::Html,
@@ -6,6 +11,7 @@ use sycamore::{
     view::View,
 };
 use sycamore_router::{HistoryIntegration, Route, Router};
+use tetrox::{tetromino::SrsTetromino, Bag, PieceKind};
 
 #[derive(Route)]
 enum Routes {
@@ -23,13 +29,13 @@ pub fn Game<'a, G: Html>(cx: &'a Scope<'a>) -> View<G> {
             view: |cx, route: &ReadSignal<Routes>| {
                 view! { cx,
                     div(class="content") {
-                        div(class="bg-gradient")
                         (match route.get().as_ref() {
                             Routes::Home => view! { cx,
-                                p(class="loading-text") { "game" }
+                                Board::<SrsTetromino, G> {}
                             },
                             Routes::NotFound => view! { cx, p(class="loading-text") { "not found" } }
                         })
+                        ConfigPanel {}
                     }
                 }
             }

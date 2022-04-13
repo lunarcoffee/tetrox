@@ -140,13 +140,11 @@ impl<P: PieceKind> LivePiece<P> {
 
     // if the piece being checked has a previous state, `old_piece` should represent that state
     fn is_blocked(&self, old_piece: Option<&LivePiece<P>>, field: &DefaultField<P>) -> bool {
-        self.coords
-            .iter()
-            // make sure the coords are in bounds and are not filled by other pieces
-            .any(|c| {
-                !field.coords_in_bounds(&c)
-                    || !field.get_at(c).unwrap().is_empty() && old_piece.map(|p| !p.coords.contains(c)).unwrap_or(true)
-            })
+        // make sure the coords are in bounds and are not filled by other pieces
+        self.coords.iter().any(|c| {
+            !field.coords_in_bounds(&c)
+                || !field.get_at(&c).unwrap().is_empty() && old_piece.map(|p| !p.coords.contains(c)).unwrap_or(true)
+        })
     }
 }
 
