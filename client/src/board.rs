@@ -4,6 +4,7 @@ use crate::{
     util,
 };
 
+use std::ops::DerefMut;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use strum::IntoEnumIterator;
@@ -80,26 +81,27 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
                 let config = config_signal.get();
 
                 web_sys::console::log_1(&format!("key: {:?}", e.key()).into());
-                
+
                 config.inputs.get_by_right(&e.key()).map(|input| {
                     util::with_signal_mut(inputs_signal, |inputs| {
                         // do action if the input wasn't already pressed
                         if !inputs.set_pressed(input).is_pressed() {
                             util::with_signal_mut(field, |field| match *input {
-                                Input::Left => field.try_shift(0, -1),
-                                Input::Right => field.try_shift(0, 1),
+                                Input::Left => { field.try_shift(0, -1); },
+                                Input::Right => { field.try_shift(0, 1); },
                                 // Input::SoftDrop => todo!(),
-                                // Input::HardDrop => todo!(),
+                                Input::HardDrop => { util::with_signal_mut_silent(bag, |bag| field.hard_drop(bag)); },
                                 // Input::RotateCw => field.try_rotate_cw(&SrsKickTable),
                                 // Input::RotateCcw => field.try_rotate_ccw(&SrsKickTable),
                                 // Input::Rotate180 => field.try_rotate_180(&Tetrio180KickTable),
                                 // Input::SwapHoldPiece => todo!(),
                                 // Input::Reset => todo!(),
                                 // Input::ShowHideUi => todo!(),
-                                _ => false,
+                                _ => {},
                             });
                         }
                     });
+                    util::with_signal_mut(bag, |_| {});
                 });
             },
             on:keyup=|e: Event| {

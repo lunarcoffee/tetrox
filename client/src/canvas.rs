@@ -247,15 +247,15 @@ impl<'a, P: PieceKind> CanvasDrawer<'a, P> {
         ctx.set_font("18px 'IBM Plex Sans'");
         ctx.fill_text("next", 8.0, 24.0).unwrap();
 
-        // TODO: does this refcell usage work lol
-        let queue = util::with_signal_mut(bag, |bag| bag.peek().take(queue_len).cloned().collect::<Vec<_>>());
-        for (nth, kind) in queue.iter().enumerate() {
-            self.draw_piece(
-                *kind,
-                SIDE_BAR_WIDTH / 2,
-                LABEL_HEIGHT + PIECE_HEIGHT * (nth + 1) - PIECE_HEIGHT / 2,
-            )
-        }
+        util::with_signal_mut_silent(bag, |bag| {
+            for (nth, kind) in bag.peek().take(queue_len).enumerate() {
+                self.draw_piece(
+                    *kind,
+                    SIDE_BAR_WIDTH / 2,
+                    LABEL_HEIGHT + PIECE_HEIGHT * (nth + 1) - PIECE_HEIGHT / 2,
+                )
+            }
+        });
     }
 
     fn draw_piece(&self, kind: P, x_offset: usize, y_offset: usize) {
