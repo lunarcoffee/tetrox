@@ -2,17 +2,24 @@ use crate::game::Game;
 
 use bimap::BiMap;
 use serde::{Deserialize, Serialize};
-use sycamore::{component, generic_node::Html, prelude::Scope, view, view::View};
+use strum_macros::EnumIter;
+use sycamore::{
+    component,
+    generic_node::Html,
+    prelude::{create_signal, provide_context_ref, Scope},
+    view,
+    view::View,
+};
 
 #[component]
-fn SectionHeading<'a, G: Html>(cx: &'a Scope<'a>, section: &'static str) -> View<G> {
+fn SectionHeading<'a, G: Html>(cx: Scope<'a>, section: &'static str) -> View<G> {
     view! { cx, p(class="config-heading") { (section) } }
 }
 
 #[component]
-pub fn ConfigPanel<'a, G: Html>(cx: &'a Scope<'a>) -> View<G> {
-    let config = cx.create_signal(Config::default());
-    cx.provide_context_ref(config);
+pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
+    let config = create_signal(cx, Config::default());
+    provide_context_ref(cx, config);
 
     view! { cx,
         div(class="content") {
@@ -24,7 +31,7 @@ pub fn ConfigPanel<'a, G: Html>(cx: &'a Scope<'a>) -> View<G> {
     }
 }
 
-#[derive(PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, EnumIter)]
 pub enum Input {
     Left,
     Right,
@@ -40,6 +47,7 @@ pub enum Input {
 
 pub type Keybind = String;
 
+// TODO: std::any::Any?
 #[derive(Serialize, Deserialize)]
 pub struct Config {
     // visual settings

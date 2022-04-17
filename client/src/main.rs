@@ -1,4 +1,4 @@
-use sycamore::{component, generic_node::Html, prelude::Scope, view, view::View};
+use sycamore::{component, generic_node::Html, prelude::Scope, view, view::View, reactive};
 use tetrox::{tetromino::SrsTetromino, PieceKind};
 use crate::config::ConfigPanel;
 
@@ -7,12 +7,13 @@ mod game;
 mod config;
 mod canvas;
 mod menu;
+mod util;
 
 pub const SKIN_NAMES: &[&str] = &["tetrox", "gradient", "inset", "rounded", "solid"];
 
 #[component]
-fn AssetPreloader<'a, G: Html>(cx: &'a Scope<'a>) -> View<G> {
-    let n_loaded = cx.create_signal(0);
+fn AssetPreloader<'a, G: Html>(cx: Scope<'a>) -> View<G> {
+    let n_loaded = reactive::create_signal(cx, 0);
 
     let assets = SrsTetromino::iter()
         .map(|k| k.asset_name().to_string())

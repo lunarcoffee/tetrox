@@ -1,9 +1,9 @@
-use std::{cell::RefCell, rc::Rc};
+use std::cell::RefCell;
 
 use sycamore::{
     component,
     generic_node::{DomNode, Html},
-    prelude::{NodeRef, Scope, ScopeCreateNodeRef, Signal},
+    prelude::{create_effect, create_node_ref, use_context, NodeRef, Scope, Signal},
     view,
     view::View,
     Prop,
@@ -15,7 +15,7 @@ use tetrox::{
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
-use crate::{board::AssetCache, config::Config};
+use crate::{board::AssetCache, config::Config, util};
 
 pub const SQUARE_WIDTH: usize = 36; // the size of each square on the field
 
@@ -41,8 +41,8 @@ fn get_canvas_drawer<'a, P: PieceKind + 'static, G: Html>(
 }
 
 #[component]
-pub fn HoldPiece<'a, P: PieceKind + 'static, G: Html>(cx: &'a Scope<'a>) -> View<G> {
-    let hold_piece_ref = cx.create_node_ref();
+pub fn HoldPiece<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
+    let hold_piece_ref = create_node_ref(cx);
     let view = view! { cx,
         canvas(
             ref=hold_piece_ref,
@@ -52,36 +52,37 @@ pub fn HoldPiece<'a, P: PieceKind + 'static, G: Html>(cx: &'a Scope<'a>) -> View
         )
     };
 
-    let config = cx.use_context::<Signal<Config>>();
-    let field = cx.use_context::<Signal<DefaultField<P>>>();
-    let asset_cache = cx.use_context::<AssetCache>();
+    let config = use_context::<Signal<Config>>(cx);
+    let field = use_context::<Signal<RefCell<DefaultField<P>>>>(cx);
+    let asset_cache = use_context::<AssetCache>(cx);
 
-    cx.create_effect(|| {
-        get_canvas_drawer(&config.get(), hold_piece_ref, &field.get(), asset_cache).map(|c| c.draw_hold_piece());
+    create_effect(cx, || {
+        get_canvas_drawer(&config.get(), hold_piece_ref, &field.get().borrow(), asset_cache)
+            .map(|c| c.draw_hold_piece());
     });
 
     view
 }
 
 #[component]
-pub fn Field<'a, P: PieceKind + 'static, G: Html>(cx: &'a Scope<'a>) -> View<G> {
-    let field = cx.use_context::<Signal<DefaultField<P>>>();
-    let field_ref = cx.create_node_ref();
+pub fn Field<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
+    let field = use_context::<Signal<RefCell<DefaultField<P>>>>(cx);
+    let field_ref = create_node_ref(cx);
     let view = view! { cx,
         canvas(
             ref=field_ref,
             class="field-canvas",
-            width={ SQUARE_WIDTH * field.get().width() },
-            height={ SQUARE_WIDTH * field.get().height() },
-            style={ format!("margin-top: -{}px;", SQUARE_WIDTH * field.get().hidden()) },
+            width={ SQUARE_WIDTH * field.get().borrow().width() },
+            height={ SQUARE_WIDTH * field.get().borrow().height() },
+            style={ format!("margin-top: -{}px;", SQUARE_WIDTH * field.get().borrow().hidden()) },
         )
     };
 
-    let config = cx.use_context::<Signal<Config>>();
-    let asset_cache = cx.use_context::<AssetCache>();
+    let config = use_context::<Signal<Config>>(cx);
+    let asset_cache = use_context::<AssetCache>(cx);
 
-    cx.create_effect(|| {
-        get_canvas_drawer(&config.get(), field_ref, &field.get(), asset_cache).map(|c| c.draw_field());
+    create_effect(cx, || {
+        get_canvas_drawer(&config.get(), field_ref, &field.get().borrow(), asset_cache).map(|c| c.draw_field());
     });
 
     view
@@ -93,9 +94,9 @@ pub struct NextQueueProps<'a, P: PieceKind> {
 }
 
 #[component]
-pub fn NextQueue<'a, P: PieceKind + 'static, G: Html>(cx: &'a Scope<'a>, props: NextQueueProps<'a, P>) -> View<G> {
-    let config = cx.use_context::<Signal<Config>>();
-    let next_queue_ref = cx.create_node_ref();
+pub fn NextQueue<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>, props: NextQueueProps<'a, P>) -> View<G> {
+    let config = use_context::<Signal<Config>>(cx);
+    let next_queue_ref = create_node_ref(cx);
     let view = view! { cx,
         canvas(
             ref=next_queue_ref,
@@ -105,12 +106,13 @@ pub fn NextQueue<'a, P: PieceKind + 'static, G: Html>(cx: &'a Scope<'a>, props: 
         )
     };
 
-    let field = cx.use_context::<Signal<DefaultField<P>>>();
-    let asset_cache = cx.use_context::<AssetCache>();
+    let field = use_context::<Signal<RefCell<DefaultField<P>>>>(cx);
+    let asset_cache = use_context::<AssetCache>(cx);
 
-    cx.create_effect(|| {
-        get_canvas_drawer(&config.get(), next_queue_ref, &field.get(), asset_cache)
-            .map(|c| c.draw_next_queue(props.bag.get().clone()));
+    create_effect(cx, || {
+        props.bag.track();
+        get_canvas_drawer(&config.get(), next_queue_ref, &field.get().borrow(), asset_cache)
+            .map(|c| c.draw_next_queue(props.bag));
     });
 
     view
@@ -224,7 +226,7 @@ impl<'a, P: PieceKind> CanvasDrawer<'a, P> {
         }
     }
 
-    fn draw_next_queue(&self, bag: Rc<RefCell<SingleBag<P>>>) {
+    fn draw_next_queue(&self, bag: &Signal<RefCell<SingleBag<P>>>) {
         let queue_len = self.config.queue_len;
 
         // total height of queue in pixels
@@ -246,8 +248,7 @@ impl<'a, P: PieceKind> CanvasDrawer<'a, P> {
         ctx.fill_text("next", 8.0, 24.0).unwrap();
 
         // TODO: does this refcell usage work lol
-        let queue = bag.borrow_mut().peek().take(queue_len).cloned().collect::<Vec<_>>();
-
+        let queue = util::with_signal_mut(bag, |bag| bag.peek().take(queue_len).cloned().collect::<Vec<_>>());
         for (nth, kind) in queue.iter().enumerate() {
             self.draw_piece(
                 *kind,

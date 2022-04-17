@@ -19,7 +19,7 @@ pub enum Routes {
 }
 
 #[component]
-pub fn Game<'a, G: Html>(cx: &'a Scope<'a>) -> View<G> {
+pub fn Game<'a, G: Html>(cx: Scope<'a>) -> View<G> {
     view! { cx,
         Router {
             integration: HistoryIntegration::new(),
