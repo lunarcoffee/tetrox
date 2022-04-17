@@ -66,19 +66,19 @@ pub fn HoldPiece<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> 
 
 #[component]
 pub fn Field<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
-    let field = use_context::<Signal<RefCell<DefaultField<P>>>>(cx);
+    let config = use_context::<Signal<Config>>(cx);
     let field_ref = create_node_ref(cx);
     let view = view! { cx,
         canvas(
             ref=field_ref,
             class="field-canvas",
-            width={ SQUARE_WIDTH * field.get().borrow().width() },
-            height={ SQUARE_WIDTH * field.get().borrow().height() },
-            style={ format!("margin-top: -{}px;", SQUARE_WIDTH * field.get().borrow().hidden()) },
+            width={ SQUARE_WIDTH * config.get().field_width },
+            height={ SQUARE_WIDTH * config.get().field_height },
+            style={ format!("margin-top: -{}px;", SQUARE_WIDTH * config.get().field_hidden) },
         )
     };
 
-    let config = use_context::<Signal<Config>>(cx);
+    let field = use_context::<Signal<RefCell<DefaultField<P>>>>(cx);
     let asset_cache = use_context::<AssetCache>(cx);
 
     create_effect(cx, || {
@@ -154,7 +154,7 @@ impl<'a, P: PieceKind> CanvasDrawer<'a, P> {
         // draw label
         ctx.set_fill_style(&"#bbb".into());
         ctx.set_global_alpha(1.0);
-        ctx.set_font("18px 'IBM Plex Sans'");
+        ctx.set_font("18px Rubik");
         ctx.fill_text("hold", 8.0, 24.0).unwrap();
 
         if let Some(kind) = self.field.hold_piece() {
@@ -243,7 +243,7 @@ impl<'a, P: PieceKind> CanvasDrawer<'a, P> {
         // draw label
         ctx.set_fill_style(&"#bbb".into());
         ctx.set_global_alpha(1.0);
-        ctx.set_font("18px 'IBM Plex Sans'");
+        ctx.set_font("18px Rubik");
         ctx.fill_text("next", 8.0, 24.0).unwrap();
 
         util::with_signal_mut_silent(bag, |bag| {

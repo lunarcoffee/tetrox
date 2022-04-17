@@ -7,7 +7,7 @@ body {
     background-size: cover;
     background-attachment: fixed;
 
-    font-family: "IBM Plex Sans";
+    font-family: "Rubik";
 
     padding: 0;
     margin: 0;
@@ -19,7 +19,7 @@ body {
 /* styles */
 
 .bold {
-    font-weight: bold;
+    font-weight: 500;
 }
 
 /* elements */
@@ -38,18 +38,18 @@ body {
 }
 
 .link {
-    color: #a4a0d8;
+    color: #d4d4d4;
     text-decoration: none;
 
     transition: color 0.1s;
 }
 
 .link:hover {
-    color: #8e89cc;
+    color: #c9c9c9;
 }
 
 .link:active {
-    color: #807bc5;
+    color: #b8b8b8;
 }
 
 .content {
@@ -101,11 +101,11 @@ body {
 }
 
 .config-heading {
-    color: #b8b4f1;
+    color: #f1f1f1;
 
-    font-family: "Fira Sans";
+    font-family: "Rubik";
     font-size: 1.15rem;
-    font-weight: bold;
+    font-weight: 500;
 
     margin: 14px 0;
 }
@@ -115,9 +115,11 @@ body {
     margin: 0;
 }
 
-.config-option>select {
-    font-family: "IBM Plex Sans";
+.config-option>* {
+    font-family: "Rubik";
+}
 
+.config-option>select {
     background-color: #d8d7f1cc;
     border: none;
     border-radius: 4px;
@@ -129,13 +131,11 @@ body {
 }
 
 .config-option>select:hover {
-    background-color: #c3c2e2cc;
+    background-color: #e2e2e2cc;
 }
 
 .config-option>input[type=button] {
-    font-family: "IBM Plex Sans";
-
-    background-color: #d8d7f1cc;
+    background-color: #f1f1f1cc;
     border: none;
     border-radius: 4px;
 
@@ -146,11 +146,11 @@ body {
 }
 
 .config-option>input[type=button]:hover {
-    background-color: #c3c2e2cc;
+    background-color: #e2e2e2cc;
 }
 
 .config-option>input[type=button]:active {
-    background-color: #aeaccfcc;
+    background-color: #d1d1d1cc;
 }
 
 .config-button-box {
@@ -201,7 +201,7 @@ body {
 
 .game-stats>p {
     color: #ccc;
-    font-family: "IBM Plex Sans";
+    font-family: "Rubik";
 
     direction: rtl;
 }

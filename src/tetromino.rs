@@ -140,10 +140,20 @@ impl KickTable<SrsTetromino> for SrsKickTable {
     }
 }
 
-// 180 rotate kick table from tetr.io
-pub struct Tetrio180KickTable;
+impl<P: PieceKind> KickTable<P> for SrsKickTable {
+    default fn rotate_cw(&self, _: P, _: RotationState) -> Vec<Coords> {
+        vec![Coords(0, 0)]
+    }
 
-impl KickTable<SrsTetromino> for Tetrio180KickTable {
+    default fn rotate_ccw(&self, _: P, _: RotationState) -> Vec<Coords> {
+        vec![Coords(0, 0)]
+    }
+}
+
+// 180 rotate kick table from tetr.io
+pub struct TetrIo180KickTable;
+
+impl KickTable<SrsTetromino> for TetrIo180KickTable {
     fn rotate_cw(&self, piece: SrsTetromino, rotation_state: RotationState) -> Vec<Coords> {
         SrsKickTable.rotate_cw(piece, rotation_state)
     }
@@ -153,7 +163,7 @@ impl KickTable<SrsTetromino> for Tetrio180KickTable {
     }
 }
 
-impl KickTable180<SrsTetromino> for Tetrio180KickTable {
+impl KickTable180<SrsTetromino> for TetrIo180KickTable {
     fn rotate_180(&self, _piece: SrsTetromino, rotation_state: RotationState) -> Vec<Coords> {
         match rotation_state {
             RotationState::Initial => vec![(0, 0), (-1, 0), (-1, 1), (-1, -1), (0, 1), (0, -1)],
@@ -164,5 +174,11 @@ impl KickTable180<SrsTetromino> for Tetrio180KickTable {
         .into_iter()
         .map(|(row_shift, col_shift)| Coords(row_shift, col_shift))
         .collect::<Vec<_>>()
+    }
+}
+
+impl<P: PieceKind> KickTable180<P> for TetrIo180KickTable {
+    default fn rotate_180(&self, _: P, _: RotationState) -> Vec<Coords> {
+        vec![Coords(0, 0)]
     }
 }

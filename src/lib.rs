@@ -1,4 +1,5 @@
 #![feature(array_chunks)]
+#![feature(min_specialization)]
 
 pub mod field;
 pub mod tetromino;
@@ -139,6 +140,6 @@ pub trait KickTable<P: PieceKind> {
     fn rotate_ccw(&self, piece: P, rotation_state: RotationState) -> Vec<Coords>;
 }
 
-pub trait KickTable180<P: PieceKind>: KickTable<P> {
+pub trait KickTable180<P: PieceKind> {
     fn rotate_180(&self, piece: P, rotation_state: RotationState) -> Vec<Coords>;
 }

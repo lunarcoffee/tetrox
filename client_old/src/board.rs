@@ -10,7 +10,7 @@ use crate::input::InputStates;
 use gloo_timers::callback::{Interval, Timeout};
 use tetrox::{
     field::DefaultField,
-    tetromino::{SrsKickTable, SrsTetromino, Tetrio180KickTable},
+    tetromino::{SrsKickTable, SrsTetromino, TetrIo180KickTable},
     SingleBag,
 };
 use web_sys::HtmlElement;
@@ -279,7 +279,7 @@ impl Component for Board {
 
             BoardMessage::RotateCw => self.field.try_rotate_cw(&SrsKickTable),
             BoardMessage::RotateCcw => self.field.try_rotate_ccw(&SrsKickTable),
-            BoardMessage::Rotate180 => self.field.try_rotate_180(&Tetrio180KickTable),
+            BoardMessage::Rotate180 => self.field.try_rotate_180(&TetrIo180KickTable),
 
             BoardMessage::SwapHoldPiece => self
                 .field
