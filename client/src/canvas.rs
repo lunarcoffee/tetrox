@@ -110,7 +110,6 @@ pub fn NextQueue<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>, props: Next
     let asset_cache = use_context::<AssetCache>(cx);
 
     create_effect(cx, || {
-        props.bag.track();
         get_canvas_drawer(&config.get(), next_queue_ref, &field.get().borrow(), asset_cache)
             .map(|c| c.draw_next_queue(props.bag));
     });
