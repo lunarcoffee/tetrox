@@ -12,6 +12,7 @@ mod canvas;
 mod config;
 mod game_stats;
 mod input;
+mod inputs;
 
 // a single asset has been loaded
 struct AssetLoaded;

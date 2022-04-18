@@ -31,7 +31,7 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, EnumIter)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, EnumIter)]
 pub enum Input {
     Left,
     Right,
@@ -115,8 +115,12 @@ impl Default for Config {
             gravity_enabled: true,
             move_limit_enabled: true,
 
-            delayed_auto_shift: 280,
-            auto_repeat_rate: 50,
+            // delayed_auto_shift: 280,
+            // auto_repeat_rate: 50,
+            // soft_drop_rate: 30,
+
+            delayed_auto_shift: 114,
+            auto_repeat_rate: 0,
             soft_drop_rate: 30,
 
             inputs: inputs.into_iter().map(|(i, k)| (i, k.to_string())).collect(),
