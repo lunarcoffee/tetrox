@@ -54,49 +54,67 @@ where
     create_selector(cx, move || op(config.get()))
 }
 
-pub fn make_lr_hold_timer<'a, P: PieceKind + 'a>(
+// for unbuffered inputs (e.g. soft drop; sdr loop)
+pub fn create_loop_timer<'a, P: PieceKind + 'a>(
     cx: Scope<'a>,
     inputs: &'a Signal<RefCell<InputStates>>,
-    config: &'a Signal<Config>,
+    duration: &'a ReadSignal<u32>,
     field: &'a Signal<RefCell<DefaultField<P>>>,
     input: Input,
     mut action: impl FnMut(&mut DefaultField<P>) + Copy + Clone + 'a,
 ) -> &'a Tweened<'a, f64> {
-    let handling = create_config_selector(cx, config, |c| {
-        (c.delayed_auto_shift, c.auto_repeat_rate, c.soft_drop_rate)
-    });
-
     // TODO: make these update for updated das/arr with an effect?
-    let (das, arr, _) = *handling.get();
-    let das_timer = create_tweened_signal(cx, 1.0f64, Duration::from_millis(das.into()), easing::linear);
-    let arr_timer = create_tweened_signal(cx, 1.0f64, Duration::from_millis(arr.into()), easing::linear);
-    // TODO: sdr
+    let duration = Duration::from_millis((*duration.get()).into());
+    let timer = create_tweened_signal(cx, 1.0f64, duration, easing::linear);
 
     create_effect(cx, move || {
-        if !das_timer.is_tweening() && *das_timer.get() == 0.0 {
+        // if the value has finished tweening from 1.0 to 0.0 (i.e. the timeout has elapsed)
+        if !timer.is_tweening() && *timer.get() == 0.0 {
+            timer.signal().set(1.0); // reset for the next timer activation
+
+            let state = inputs.get_untracked().borrow().get_state(&input);
+            if state.is_held() {
+                if state.is_pressed() {
+                    util::with_signal_mut_untracked(field, |field| action(field));
+                }
+                // continue the timer loop if the input is held (pressed or suppressed)
+                timer.set(0.0);
+            }
+        }
+    });
+
+    timer
+}
+
+// for buffered inputs (e.g. left/right movement; das buffer + arr loop)
+pub fn create_buffered_loop_timer<'a, P: PieceKind + 'a>(
+    cx: Scope<'a>,
+    inputs: &'a Signal<RefCell<InputStates>>,
+    durations: &'a ReadSignal<(u32, u32)>,
+    field: &'a Signal<RefCell<DefaultField<P>>>,
+    input: Input,
+    mut action: impl FnMut(&mut DefaultField<P>) + Copy + Clone + 'a,
+) -> &'a Tweened<'a, f64> {
+    // TODO: make these update for updated das/arr with an effect?
+    let buffer_duration = Duration::from_millis(durations.get().0.into());
+    let buffer_timer = create_tweened_signal(cx, 1.0f64, buffer_duration, easing::linear);
+
+    let loop_duration = durations.map(cx, |(_, b)| *b);
+    let loop_timer = create_loop_timer(cx, inputs, loop_duration, field, input, action);
+
+    // buffered timer which activates loop timer after an initial buffer time
+    create_effect(cx, move || {
+        if !buffer_timer.is_tweening() && *buffer_timer.get() == 0.0 {
+            // apply the action if the input is still held down
             if inputs.get_untracked().borrow().get_state(&input).is_pressed() {
                 util::with_signal_mut_untracked(field, |field| action(field));
             }
-            arr_timer.set(0.0);
-            das_timer.signal().set(1.0);
+            loop_timer.set(0.0); // activate the loop timer
+            buffer_timer.signal().set(1.0); // reset for the next buffer timer activation
         }
     });
 
-    create_effect(cx, move || {
-        if !arr_timer.is_tweening() && *arr_timer.get() == 0.0 {
-            arr_timer.signal().set(1.0);
-
-            let state = inputs.get_untracked().borrow().get_state(&input);
-            if state.is_pressed() {
-                util::with_signal_mut_untracked(field, |field| action(field));
-            }
-            if state.is_held() {
-                arr_timer.set(0.0);
-            }
-        }
-    });
-
-    das_timer
+    buffer_timer
 }
 
 #[component]
@@ -127,14 +145,17 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
     let style_values = create_config_selector(cx, config, |c| (c.field_zoom * 100.0, c.vertical_offset));
     let game_style = style_values.map(cx, |d| format!("transform: scale({}%); margin-top: {}px;", d.0, d.1));
 
-    let inputs = create_signal(cx, RefCell::new(InputStates::new()));
+    // loop timer durations
+    let das_arr = create_config_selector(cx, config, |c| (c.delayed_auto_shift, c.auto_repeat_rate));
+    let sdr = create_config_selector(cx, config, |c| c.soft_drop_rate);
 
-    let left_hold_timer = make_lr_hold_timer(cx, inputs, config, field_signal, Input::Left, |field| {
-        field.try_shift(0, -1);
-    });
-    let right_hold_timer = make_lr_hold_timer(cx, inputs, config, field_signal, Input::Right, |field| {
-        field.try_shift(0, 1);
-    });
+    let inputs = create_signal(cx, RefCell::new(InputStates::new()));
+    let shift = |rows, cols| move |field: &mut DefaultField<P>| drop(field.try_shift(rows, cols));
+
+    // looping input timers
+    let left_timer = create_buffered_loop_timer(cx, inputs, das_arr, field_signal, Input::Left, shift(0, -1));
+    let right_timer = create_buffered_loop_timer(cx, inputs, das_arr, field_signal, Input::Right, shift(0, 1));
+    let soft_drop_timer = create_loop_timer(cx, inputs, sdr, field_signal, Input::SoftDrop, shift(1, 0));
 
     let keydown_handler = |e: Event| {
         let e = e.dyn_into::<KeyboardEvent>().unwrap();
@@ -147,13 +168,17 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
                 util::with_signal_mut(field_signal, |field| match input {
                     Input::Left => {
                         field.try_shift(0, -1);
-                        left_hold_timer.set(0.0);
+                        left_timer.set(0.0);
                     }
                     Input::Right => {
                         field.try_shift(0, 1);
-                        right_hold_timer.set(0.0);
+                        right_timer.set(0.0);
                     }
-                    Input::SoftDrop => drop(field.project_down()), // TODO:
+                    Input::SoftDrop => {
+                        // field.project_down();
+                        field.try_shift(1, 0);
+                        soft_drop_timer.set(0.0);
+                    } // TODO:
                     Input::HardDrop => drop(util::with_signal_mut_silent(bag, |bag| field.hard_drop(bag))),
                     Input::RotateCw => drop(field.try_rotate_cw(&SrsKickTable)),
                     Input::RotateCcw => drop(field.try_rotate_ccw(&SrsKickTable)),

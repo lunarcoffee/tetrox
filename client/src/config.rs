@@ -88,10 +88,15 @@ impl Default for Config {
             (Input::Right, "ArrowRight"),
             (Input::SoftDrop, "ArrowDown"),
             (Input::HardDrop, " "),
-            (Input::RotateCw, "x"),
-            (Input::RotateCcw, "z"),
-            (Input::Rotate180, "Shift"),
-            (Input::SwapHoldPiece, "c"),
+            // (Input::RotateCw, "x"),
+            // (Input::RotateCcw, "z"),
+            // (Input::Rotate180, "Shift"),
+            // (Input::SwapHoldPiece, "c"),
+            // (Input::Reset, "`"), // TODO:
+            (Input::RotateCw, "ArrowUp"),
+            (Input::RotateCcw, "s"),
+            (Input::Rotate180, "a"),
+            (Input::SwapHoldPiece, "d"),
             (Input::Reset, "`"),
             (Input::ShowHideUi, "F9"),
         ];
@@ -115,12 +120,8 @@ impl Default for Config {
             gravity_enabled: true,
             move_limit_enabled: true,
 
-            // delayed_auto_shift: 280,
-            // auto_repeat_rate: 50,
-            // soft_drop_rate: 30,
-
-            delayed_auto_shift: 114,
-            auto_repeat_rate: 0,
+            delayed_auto_shift: 280,
+            auto_repeat_rate: 50,
             soft_drop_rate: 30,
 
             inputs: inputs.into_iter().map(|(i, k)| (i, k.to_string())).collect(),
