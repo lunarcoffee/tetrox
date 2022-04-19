@@ -120,9 +120,9 @@ impl Default for Config {
             gravity_enabled: true,
             move_limit_enabled: true,
 
-            delayed_auto_shift: 280,
-            auto_repeat_rate: 50,
-            soft_drop_rate: 30,
+            delayed_auto_shift: 130,
+            auto_repeat_rate: 0,
+            soft_drop_rate: 0,
 
             inputs: inputs.into_iter().map(|(i, k)| (i, k.to_string())).collect(),
         }

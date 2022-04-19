@@ -1,3 +1,5 @@
+#![feature(type_alias_impl_trait)]
+
 use sycamore::{component, generic_node::Html, prelude::Scope, view, view::View, reactive};
 use tetrox::{tetromino::SrsTetromino, PieceKind};
 use crate::config::ConfigPanel;

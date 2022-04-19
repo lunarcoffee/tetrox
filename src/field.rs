@@ -333,10 +333,8 @@ impl<P: PieceKind> DefaultField<P> {
         self.try_update_cur_piece(LivePiece::new(kind, &self.piece_origin))
     }
 
-    pub fn swap_hold_piece(&mut self, bag: &mut impl Bag<P>) -> bool {
-        if self.hold_swapped {
-            false
-        } else {
+    pub fn swap_hold_piece(&mut self, bag: &mut impl Bag<P>) {
+        if !self.hold_swapped {
             self.last_cur_piece_kick = None;
             self.hold_swapped = true;
             self.lock_delay_actions = None;
@@ -345,9 +343,9 @@ impl<P: PieceKind> DefaultField<P> {
             self.hold_piece = Some(self.cur_piece.kind());
 
             if let Some(kind) = hold_kind {
-                self.try_update_cur_piece(LivePiece::new(kind, &self.piece_origin))
+                self.try_update_cur_piece(LivePiece::new(kind, &self.piece_origin));
             } else {
-                self.try_spawn(bag)
+                self.try_spawn(bag);
             }
         }
     }

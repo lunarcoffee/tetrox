@@ -10,6 +10,7 @@ sycamore = "0.8.0-beta.4"
 sycamore-router = "0.8.0-beta.4"
 
 getrandom = { version = "0.2.5", features = ["js"] }
+js-sys = "0.3.57"
 wasm-bindgen = "0.2.79"
 gloo-timers = "0.2.3"
 

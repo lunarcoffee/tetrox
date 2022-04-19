@@ -4,13 +4,14 @@ use crate::{
     util,
 };
 
-use std::{cell::RefCell, collections::HashMap, rc::Rc, time::Duration};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
+use js_sys::Date;
 use strum::IntoEnumIterator;
 use sycamore::{
-    component, easing,
+    component,
     generic_node::Html,
-    motion::{create_tweened_signal, Tweened},
+    motion::create_raf_loop,
     prelude::{
         create_effect, create_selector, create_signal, provide_context, provide_context_ref, use_context, ReadSignal,
         Scope, Signal,
@@ -54,71 +55,56 @@ where
     create_selector(cx, move || op(config.get()))
 }
 
-// for unbuffered inputs (e.g. soft drop; sdr loop)
-pub fn create_loop_timer<'a, P: PieceKind + 'a>(
+struct Timer<'a>(RefCell<ActionTimerInner<'a>>);
+
+struct ActionTimerInner<'a> {
     cx: Scope<'a>,
-    inputs: &'a Signal<RefCell<InputStates>>,
-    duration: &'a ReadSignal<u32>,
-    field: &'a Signal<RefCell<DefaultField<P>>>,
-    input: Input,
-    mut action: impl FnMut(&mut DefaultField<P>) + Copy + Clone + 'a,
-) -> &'a ReadSignal<&'a Tweened<'a, f64>> {
-    // derive timer from looping interval given
-    let timer = duration.map(cx, move |d| {
-        let duration = Duration::from_millis((*d).into());
-        create_tweened_signal(cx, 1.0f64, duration, easing::linear)
-    });
 
-    create_effect(cx, move || {
-        // if the value has finished tweening from 1.0 to 0.0 (i.e. the timeout has elapsed)
-        if !timer.get().is_tweening() && *timer.get().get() == 0.0 {
-            timer.get().signal().set(1.0); // reset for the next timer activation
-
-            let state = inputs.get_untracked().borrow().get_state(&input);
-            if state.is_held() {
-                if state.is_pressed() {
-                    util::with_signal_mut_untracked(field, |field| action(field));
-                }
-                // continue the timer loop if the input is held (pressed or suppressed)
-                timer.get().set(0.0);
-            }
-        }
-    });
-
-    timer
+    duration: u32,
+    is_finished: &'a Signal<bool>,
+    stop_fn: Option<&'a dyn Fn()>,
 }
 
-// for buffered inputs (e.g. left/right movement; das buffer + arr loop)
-pub fn create_buffered_loop_timer<'a, P: PieceKind + 'a>(
-    cx: Scope<'a>,
-    inputs: &'a Signal<RefCell<InputStates>>,
-    durations: &'a ReadSignal<(u32, u32)>,
-    field: &'a Signal<RefCell<DefaultField<P>>>,
-    input: Input,
-    mut action: impl FnMut(&mut DefaultField<P>) + Copy + Clone + 'a,
-) -> &'a ReadSignal<&'a Tweened<'a, f64>> {
-    // derive timer from buffer duration given
-    let buffer_timer = durations.map(cx, move |d| {
-        let duration = Duration::from_millis(d.0.into());
-        create_tweened_signal(cx, 1.0f64, duration, easing::linear)
-    });
+impl<'a> Timer<'a> {
+    fn new(cx: Scope<'a>, duration: u32) -> Self {
+        Timer(RefCell::new(ActionTimerInner {
+            cx,
 
-    let loop_duration = durations.map(cx, |(_, b)| *b);
-    let loop_timer = create_loop_timer(cx, inputs, loop_duration, field, input, action);
+            duration,
+            is_finished: create_signal(cx, false),
+            stop_fn: None,
+        }))
+    }
 
-    // buffered timer which activates loop timer after an initial buffer time
-    create_effect(cx, move || {
-        if !buffer_timer.get().is_tweening() && *buffer_timer.get().get() == 0.0 {
-            // apply the action if the input is still held down
-            if inputs.get_untracked().borrow().get_state(&input).is_pressed() {
-                util::with_signal_mut_untracked(field, |field| action(field));
+    // this value is reactive and should be used to perform an action on completion of the timeout
+    fn is_finished(&self) -> bool { *self.0.borrow().is_finished.get() }
+
+    // run the timer, setting the `is_finished` signal to true when the `duration` has elapsed
+    fn start(&self) {
+        // stop the timer before starting it again
+        self.stop();
+
+        let end_time = Date::now() + self.0.borrow().duration as f64;
+        let is_finished = self.0.borrow().is_finished.clone();
+
+        // loop that keeps running until the specified duration has elapsed
+        let (_, start, stop) = create_raf_loop(self.0.borrow().cx, move || {
+            let keep_running = Date::now() < end_time;
+            if !keep_running {
+                is_finished.set(true);
             }
-            loop_timer.get().set(0.0); // activate the loop timer
-            buffer_timer.get().signal().set(1.0); // reset for the next buffer timer activation
-        }
-    });
+            keep_running
+        });
 
-    buffer_timer
+        self.0.borrow_mut().stop_fn = Some(stop);
+        start()
+    }
+
+    // stop any currently running timer and mark it as unfinished, effectively resetting it
+    fn stop(&self) {
+        self.0.borrow().stop_fn.map(|stop| stop());
+        self.0.borrow().is_finished.set(false);
+    }
 }
 
 #[component]
@@ -151,61 +137,148 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
 
     // loop timer durations
     let das_arr = create_config_selector(cx, config, |c| (c.delayed_auto_shift, c.auto_repeat_rate));
+    let arr = das_arr.map(cx, |d| d.1);
     let sdr = create_config_selector(cx, config, |c| c.soft_drop_rate);
 
     let inputs = create_signal(cx, RefCell::new(InputStates::new()));
-    let shift = |rows, cols| move |field: &mut DefaultField<P>| drop(field.try_shift(rows, cols));
+
+    // creates an action that moves the piece to be executed on every tick of a loop timer
+    // special action is given for a delay of zero
+    macro_rules! loop_timer_shift_action {
+        ($rows:expr, $cols:expr, $delay:expr) => {
+            $delay.map(cx, |delay| {
+                RefCell::new(if *delay == 0 {
+                    |field: &mut DefaultField<P>| while field.try_shift($rows, $cols) {}
+                } else {
+                    |field: &mut DefaultField<P>| drop(field.try_shift($rows, $cols))
+                })
+            })
+        };
+    }
+
+    type TimerAction<P> = RefCell<impl FnMut(&mut DefaultField<P>) + Copy + Clone>;
+
+    let left_action = loop_timer_shift_action!(0, -1, arr);
+    let right_action = loop_timer_shift_action!(0, 1, arr);
+    let soft_drop_action = loop_timer_shift_action!(1, 0, sdr);
+
+    // timer loop executing an action on an interval
+    let loop_timer = |duration: &'a ReadSignal<u32>, input, action: &'a ReadSignal<TimerAction<P>>| {
+        // derive timer from looping interval
+        let timer = duration.map(cx, move |d| Timer::new(cx, *d));
+
+        create_effect(cx, move || {
+            let timer = timer.get();
+            if timer.is_finished() {
+                timer.stop(); // reset for the next buffer timer activation
+                
+                let state = inputs.get_untracked().borrow().get_state(&input);
+                if state.is_held() {
+                    if state.is_pressed() {
+                        util::with_signal_mut_untracked(field_signal, |field| action.get().borrow_mut()(field));
+                    }
+                    // continue the timer loop if the input is held (pressed or suppressed)
+                    timer.start();
+                }
+            }
+        });
+
+        timer
+    };
+
+    // timer loop executing an action on an interval after an initial buffer timeout
+    let buffered_loop_timer = |durations: &'a ReadSignal<(_, _)>, input, action: &'a ReadSignal<TimerAction<P>>| {
+        // derive timers from buffer and loop durations
+        let buffer_timer = durations.map(cx, move |d| Timer::new(cx, d.0));
+        let loop_timer = loop_timer(durations.map(cx, |d| d.1), input, action);
+
+        create_effect(cx, move || {
+            let buffer_timer = buffer_timer.get();
+
+            if buffer_timer.is_finished() {
+                buffer_timer.stop(); // reset for the next buffer timer activation
+
+                // apply the action if the input is still held down
+                if inputs.get_untracked().borrow().get_state(&input).is_pressed() {
+                    util::with_signal_mut_untracked(field_signal, |field| action.get().borrow_mut()(field));
+                }
+                loop_timer.get().start(); // activate the loop timer
+            }
+        });
+
+        buffer_timer
+    };
 
     // looping input timers
-    let left_timer = create_buffered_loop_timer(cx, inputs, das_arr, field_signal, Input::Left, shift(0, -1));
-    let right_timer = create_buffered_loop_timer(cx, inputs, das_arr, field_signal, Input::Right, shift(0, 1));
-    let soft_drop_timer = create_loop_timer(cx, inputs, sdr, field_signal, Input::SoftDrop, shift(1, 0));
+    let left_timer = buffered_loop_timer(das_arr, Input::Left, left_action);
+    let right_timer = buffered_loop_timer(das_arr, Input::Right, right_action);
+    let soft_drop_timer = loop_timer(sdr, Input::SoftDrop, soft_drop_action);
 
     let keydown_handler = |e: Event| {
         let e = e.dyn_into::<KeyboardEvent>().unwrap();
-        let config = config.get();
+        let c = config.get();
 
-        config.inputs.get_by_right(&e.key()).map(|input| {
-            // do action if the input wasn't already pressed
-            let prev_state = util::with_signal_mut(inputs, |inputs| inputs.set_pressed(input));
-            if !prev_state.is_pressed() {
-                util::with_signal_mut(field_signal, |field| match input {
-                    Input::Left => {
-                        field.try_shift(0, -1);
-                        left_timer.get().set(0.0);
-                    }
-                    Input::Right => {
-                        field.try_shift(0, 1);
-                        right_timer.get().set(0.0);
-                    }
-                    Input::SoftDrop => {
-                        // field.project_down();
-                        field.try_shift(1, 0);
-                        soft_drop_timer.get().set(0.0);
-                    } // TODO:
+        c.inputs.get_by_right(&e.key()).map(|input| {
+            // don't do anything if the input was already pressed
+            // these presses come from the operating system repeating inputs automatically
+            if util::with_signal_mut(inputs, |inputs| inputs.set_pressed(input)).is_pressed() {
+                return;
+            }
+
+            util::with_signal_mut(field_signal, |field| {
+                // shift the current piece and activate a loop timer to handle a held input
+                let mut shift_and_start_timer = |rows, cols, timer: &ReadSignal<Timer>| {
+                    field.try_shift(rows, cols);
+                    timer.get().start();
+                };
+
+                match input {
+                    Input::Left => shift_and_start_timer(0, -1, left_timer),
+                    Input::Right => shift_and_start_timer(0, 1, right_timer),
+                    Input::SoftDrop => shift_and_start_timer(1, 0, soft_drop_timer),
                     Input::HardDrop => drop(util::with_signal_mut_silent(bag, |bag| field.hard_drop(bag))),
                     Input::RotateCw => drop(field.try_rotate_cw(&SrsKickTable)),
                     Input::RotateCcw => drop(field.try_rotate_ccw(&SrsKickTable)),
                     Input::Rotate180 => drop(field.try_rotate_180(&TetrIo180KickTable)),
-                    // Input::SwapHoldPiece => todo!(),
-                    // Input::Reset => todo!(),
-                    // Input::ShowHideUi => todo!(),
+                    Input::SwapHoldPiece => util::with_signal_mut_silent(bag, |bag| field.swap_hold_piece(bag)),
                     _ => {}
-                });
+                }
+            });
 
-                // only notify bag subscribers after the field is updated
-                // certain field updates (e.g. hard drop) also update the bag, which updates the next queue, which requires
-                // a reference to the field (but `with_signal_mut` already has an exclusive reference)
-                util::notify_subscribers(bag);
+            // handle game resetting separately as `with_signal_mut` will replace the new field with the old one
+            // after the closure executes
+            if input == &Input::Reset {
+                let mut new_bag = SingleBag::new();
+                let field = DefaultField::new(c.field_width, c.field_height, c.field_hidden, &mut new_bag);
+
+                field_signal.set(RefCell::new(field));
+                bag.set(RefCell::new(new_bag));
+                inputs.set(RefCell::new(InputStates::new()));
             }
+
+            // only notify bag subscribers after the field is updated
+            // certain field updates (e.g. hard drop) also update the bag, which updates the next queue, which
+            // requires a reference to the field (but `with_signal_mut` already has an exclusive reference)
+            util::notify_subscribers(bag);
         });
     };
 
     let keyup_handler = |e: Event| {
         let e = e.dyn_into::<KeyboardEvent>().unwrap();
-        let config = config.get();
-        let keybind = config.inputs.get_by_right(&e.key());
-        keybind.map(|input| util::with_signal_mut(inputs, |inputs| inputs.set_released(input)));
+        let c = config.get();
+
+        c.inputs.get_by_right(&e.key()).map(|input| {
+            util::with_signal_mut(inputs, |inputs| inputs.set_released(input));
+
+            // cancel timers on release
+            // this means pressing the input again before the buffer timer completes will not cause the action to run
+            match input {
+                Input::Left => left_timer.get().stop(),
+                Input::Right => right_timer.get().stop(),
+                Input::SoftDrop => soft_drop_timer.get().stop(),
+                _ => {}
+            }
+        });
     };
 
     view! { cx,

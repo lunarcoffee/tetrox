@@ -1,5 +1,6 @@
 #![feature(array_chunks)]
 #![feature(min_specialization)]
+#![feature(type_alias_impl_trait)]
 
 pub mod field;
 pub mod tetromino;
