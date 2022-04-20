@@ -19,11 +19,13 @@ use sycamore::{
 };
 
 use wasm_bindgen::JsCast;
-use web_sys::{Event, HtmlInputElement, HtmlSelectElement, KeyboardEvent};
+use web_sys::{Event, HtmlInputElement, HtmlSelectElement, KeyboardEvent, Storage};
+
+const CONFIG_LOCAL_STORAGE_KEY: &str = "config";
 
 #[component]
 pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
-    let c = Config::default();
+    let c = Config::from_local_storage(get_local_storage()).unwrap_or_else(|| Config::default());
 
     // separate signal for values required by canvas drawing because if both the canvas and the drawer directly used
     // the config, sometimes the view's tracked signals would update after the canvas drawer effect's, leading the
@@ -34,6 +36,12 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
 
     let config = create_signal(cx, RefCell::new(c));
     provide_context_ref(cx, config);
+
+    // store the config on changes
+    create_effect(cx, move || {
+        let json = serde_json::to_string(&*config.get()).unwrap();
+        get_local_storage().set_item(CONFIG_LOCAL_STORAGE_KEY, &json).unwrap();
+    });
 
     let updater = move |msg| {
         // see comment on `field_values` above
@@ -73,14 +81,10 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
 
     // make config value signals and effects which update the config when the value signal is changed
     macro_rules! gen_config_signals {
-        ($field:ident; $msg:ident) => {
+        ($($field:ident; $msg:ident),+) => { $(
             let $field = create_signal(cx, config.get().borrow().$field.clone());
             create_effect(cx, move || updater(ConfigMsg::$msg((*$field.get()).clone())));
-        };
-        ($field:ident; $msg:ident, $($fields:ident; $msgs:ident),+) => {
-            gen_config_signals!($field; $msg);
-            gen_config_signals!($($fields; $msgs),*);
-        }
+        )* }
     }
     gen_config_signals! {
         gravity_delay; GravityDelay, lock_delay; LockDelay, move_limit; MoveLimit,
@@ -92,6 +96,14 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
     };
 
     let skin_name_items = crate::SKIN_NAMES.iter().map(|n| (*n, n.to_string())).collect();
+
+    macro_rules! keybind_capture_buttons {
+        ($($label:expr; $input:ident),*) => { view! { cx, 
+            div(class="config-button-box") {
+                $(InputCaptureButton { label: $label, input: Input::$input, keybinds })*
+            }
+        } }
+    }
 
     view! { cx,
         div(class="content") {
@@ -120,18 +132,11 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
                 RangeInput { label: "Shadow opacity", min: 0.0, max: 1.0, step: 0.05, value: shadow_opacity }
 
                 SectionHeading("Keybinds")
-                div(class="config-button-box") {
-                    InputCaptureButton { label: "Left", input: Input::Left, keybinds }
-                    InputCaptureButton { label: "Right", input: Input::Right, keybinds }
-                    InputCaptureButton { label: "Soft drop", input: Input::SoftDrop, keybinds }
-                    InputCaptureButton { label: "Hard drop", input: Input::HardDrop, keybinds }
-                    InputCaptureButton { label: "Rotate CW", input: Input::RotateCw, keybinds }
-                    InputCaptureButton { label: "Rotate CCW", input: Input::RotateCcw, keybinds }
-                    InputCaptureButton { label: "Rotate 180", input: Input::Rotate180, keybinds }
-                    InputCaptureButton { label: "Swap hold", input: Input::SwapHoldPiece, keybinds }
-                    InputCaptureButton { label: "Reset", input: Input::Reset, keybinds }
-                    InputCaptureButton { label: "Show/hide UI", input: Input::ShowHideUi, keybinds }
-                }
+                (keybind_capture_buttons! {
+                    "Left"; Left, "Right"; Right, "Soft drop"; SoftDrop, "Hard drop"; HardDrop,
+                    "Rotate CW"; RotateCw, "Rotate CCW"; RotateCcw, "Rotate 180"; Rotate180, "Swap hold"; SwapHold,
+                    "Reset"; Reset, "Show/hide UI"; ShowHideUi
+                })
 
                 SectionHeading("Handling")
                 RangeInput { label: "DAS", min: 0, max: 500, step: 1, value: delayed_auto_shift }
@@ -141,6 +146,8 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
         }
     }
 }
+
+fn get_local_storage() -> Storage { web_sys::window().unwrap().local_storage().unwrap().unwrap() }
 
 #[derive(Prop)]
 struct RangeInputProps<'a, T: Copy + Display + FromStr + 'static> {
@@ -351,7 +358,6 @@ enum ConfigMsg {
     AutoRepeatRate(u32),
     SoftDropRate(u32),
 
-    ResetToDefault,
     ToggleUi,
 }
 
@@ -364,7 +370,7 @@ pub enum Input {
     RotateCw,
     RotateCcw,
     Rotate180,
-    SwapHoldPiece,
+    SwapHold,
     Reset,
     ShowHideUi,
 }
@@ -403,6 +409,13 @@ pub struct Config {
     pub soft_drop_rate: u32,
 }
 
+impl Config {
+    fn from_local_storage(storage: Storage) -> Option<Self> {
+        let json = storage.get_item(CONFIG_LOCAL_STORAGE_KEY).ok()??;
+        serde_json::from_str(&json).ok()
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         // guideline controls (minus double binds)
@@ -414,7 +427,7 @@ impl Default for Config {
             (Input::RotateCw, "x"),
             (Input::RotateCcw, "z"),
             (Input::Rotate180, "Shift"),
-            (Input::SwapHoldPiece, "c"),
+            (Input::SwapHold, "c"),
             (Input::Reset, "`"),
             (Input::ShowHideUi, "F9"),
         ];

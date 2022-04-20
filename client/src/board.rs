@@ -162,7 +162,7 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
                     Input::RotateCw => drop(field.try_rotate_cw(&SrsKickTable)),
                     Input::RotateCcw => drop(field.try_rotate_ccw(&SrsKickTable)),
                     Input::Rotate180 => drop(field.try_rotate_180(&TetrIo180KickTable)),
-                    Input::SwapHoldPiece => util::with_signal_mut_silent(bag, |bag| field.swap_hold_piece(bag)),
+                    Input::SwapHold => util::with_signal_mut_silent(bag, |bag| field.swap_hold_piece(bag)),
                     _ => {}
                 }
             });
