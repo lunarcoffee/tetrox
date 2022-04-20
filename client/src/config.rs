@@ -19,7 +19,7 @@ use sycamore::{
 };
 
 use wasm_bindgen::JsCast;
-use web_sys::{Event, HtmlInputElement, HtmlSelectElement};
+use web_sys::{Event, HtmlInputElement, HtmlSelectElement, KeyboardEvent};
 
 #[component]
 pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
@@ -65,8 +65,8 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
             gen_config_setter_match! {
                 gravity_delay; GravityDelay, lock_delay; LockDelay, move_limit; MoveLimit, field_width; FieldWidth,
                 queue_len; QueueLen, skin_name; SkinName, field_zoom; FieldZoom, vertical_offset; VerticalOffset,
-                shadow_opacity; ShadowOpacity, delayed_auto_shift; DelayedAutoShift, auto_repeat_rate; AutoRepeatRate,
-                soft_drop_rate; SoftDropRate
+                shadow_opacity; ShadowOpacity, keybinds; Keybinds, delayed_auto_shift; DelayedAutoShift,
+                auto_repeat_rate; AutoRepeatRate, soft_drop_rate; SoftDropRate
             }
         });
     };
@@ -87,11 +87,12 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
         topping_out_enabled; ToppingOutEnabled, auto_lock_enabled; AutoLockEnabled, gravity_enabled; GravityEnabled,
         move_limit_enabled; MoveLimitEnabled, field_width; FieldWidth, field_hidden; FieldHidden, queue_len; QueueLen,
         skin_name; SkinName, field_zoom; FieldZoom, vertical_offset; VerticalOffset, shadow_opacity; ShadowOpacity,
-        delayed_auto_shift; DelayedAutoShift, auto_repeat_rate; AutoRepeatRate, soft_drop_rate; SoftDropRate
+        keybinds; Keybinds, delayed_auto_shift; DelayedAutoShift, auto_repeat_rate; AutoRepeatRate,
+        soft_drop_rate; SoftDropRate
     };
 
     let skin_name_items = crate::SKIN_NAMES.iter().map(|n| (*n, n.to_string())).collect();
-    
+
     view! { cx,
         div(class="content") {
             Game {}
@@ -117,6 +118,20 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
                 RangeInput { label: "Field zoom", min: 0.1, max: 4.0, step: 0.05, value: field_zoom }
                 RangeInput { label: "Vertical offset", min: -2_000, max: 2_000, step: 10, value: vertical_offset }
                 RangeInput { label: "Shadow opacity", min: 0.0, max: 1.0, step: 0.05, value: shadow_opacity }
+
+                SectionHeading("Keybinds")
+                div(class="config-button-box") {
+                    InputCaptureButton { label: "Left", input: Input::Left, keybinds }
+                    InputCaptureButton { label: "Right", input: Input::Right, keybinds }
+                    InputCaptureButton { label: "Soft drop", input: Input::SoftDrop, keybinds }
+                    InputCaptureButton { label: "Hard drop", input: Input::HardDrop, keybinds }
+                    InputCaptureButton { label: "Rotate CW", input: Input::RotateCw, keybinds }
+                    InputCaptureButton { label: "Rotate CCW", input: Input::RotateCcw, keybinds }
+                    InputCaptureButton { label: "Rotate 180", input: Input::Rotate180, keybinds }
+                    InputCaptureButton { label: "Swap hold", input: Input::SwapHoldPiece, keybinds }
+                    InputCaptureButton { label: "Reset", input: Input::Reset, keybinds }
+                    InputCaptureButton { label: "Show/hide UI", input: Input::ShowHideUi, keybinds }
+                }
 
                 SectionHeading("Handling")
                 RangeInput { label: "DAS", min: 0, max: 500, step: 1, value: delayed_auto_shift }
@@ -209,6 +224,7 @@ struct ToggleButtonProps<'a> {
     value: &'a Signal<bool>,
 }
 
+// button that toggles a `bool`
 #[component]
 fn ToggleButton<'a, G: Html>(cx: Scope<'a>, props: ToggleButtonProps<'a>) -> View<G> {
     let ToggleButtonProps { label, value } = props;
@@ -221,6 +237,56 @@ fn ToggleButton<'a, G: Html>(cx: Scope<'a>, props: ToggleButtonProps<'a>) -> Vie
                 class=format!("config-toggle-button-{}", label),
                 value=label.get(),
                 on:click=|_| value.set(!*value.get()),
+            )
+        }
+    }
+}
+
+#[derive(Prop)]
+struct InputCaptureButtonProps<'a> {
+    label: &'static str,
+    input: Input,
+    keybinds: &'a Signal<Keybinds>,
+}
+
+// button that captures keyboard input when pressed (used for assigning keybinds)
+#[component]
+fn InputCaptureButton<'a, G: Html>(cx: Scope<'a>, props: InputCaptureButtonProps<'a>) -> View<G> {
+    let InputCaptureButtonProps { label, input, keybinds } = props;
+
+    let is_capturing_input = create_signal(cx, false); // currently capturing input?
+    let label = is_capturing_input.map(cx, move |i| {
+        let keybind = i.then(|| "<press a key>".to_string()).unwrap_or_else(|| {
+            keybinds
+                .get()
+                .get_by_left(&input)
+                .map(|keybind| match keybind.as_str() {
+                    " " => "Space",
+                    _ if keybind.starts_with("Arrow") => &keybind[5..],
+                    _ => keybind.as_str(),
+                })
+                .unwrap_or("<unset>")
+                .to_string()
+        });
+        format!("{} ({})", label, keybind)
+    });
+
+    view! { cx,
+        div(class="config-option") {
+            input(
+                type="button",
+                value=label.get(),
+                on:click=|_| is_capturing_input.set(!*is_capturing_input.get()),
+                on:keydown=move |e: Event| {
+                    e.prevent_default();
+                    let e = e.dyn_into::<KeyboardEvent>().unwrap();
+
+                    // only change binds if currently capturing and let escape cancel the action
+                    if *is_capturing_input.get() && !e.key().starts_with("Esc") {
+                        keybinds.modify().insert(input, e.key());
+                    }
+                    is_capturing_input.set(false);
+                },
             )
         }
     }
@@ -279,13 +345,11 @@ enum ConfigMsg {
     VerticalOffset(i32),
     ShadowOpacity(f64),
 
+    Keybinds(Keybinds),
+
     DelayedAutoShift(u32),
     AutoRepeatRate(u32),
     SoftDropRate(u32),
-
-    StartRebindInput(Input),
-    CancelRebindInput,
-    RebindInput(String),
 
     ResetToDefault,
     ToggleUi,
@@ -305,9 +369,8 @@ pub enum Input {
     ShowHideUi,
 }
 
-pub type Keybind = String;
+pub type Keybinds = BiMap<Input, String>;
 
-// TODO: std::any::Any?
 #[derive(Serialize, Deserialize)]
 pub struct Config {
     // gameplay
@@ -332,7 +395,7 @@ pub struct Config {
     pub shadow_opacity: f64,
 
     // controls
-    pub inputs: BiMap<Input, Keybind>,
+    pub keybinds: Keybinds,
 
     // handling
     pub delayed_auto_shift: u32,
@@ -348,15 +411,10 @@ impl Default for Config {
             (Input::Right, "ArrowRight"),
             (Input::SoftDrop, "ArrowDown"),
             (Input::HardDrop, " "),
-            // (Input::RotateCw, "x"),
-            // (Input::RotateCcw, "z"),
-            // (Input::Rotate180, "Shift"),
-            // (Input::SwapHoldPiece, "c"),
-            // (Input::Reset, "`"), // TODO:
-            (Input::RotateCw, "ArrowUp"),
-            (Input::RotateCcw, "s"),
-            (Input::Rotate180, "a"),
-            (Input::SwapHoldPiece, "d"),
+            (Input::RotateCw, "x"),
+            (Input::RotateCcw, "z"),
+            (Input::Rotate180, "Shift"),
+            (Input::SwapHoldPiece, "c"),
             (Input::Reset, "`"),
             (Input::ShowHideUi, "F9"),
         ];
@@ -380,11 +438,11 @@ impl Default for Config {
             gravity_enabled: true,
             move_limit_enabled: true,
 
+            keybinds: inputs.into_iter().map(|(i, k)| (i, k.to_string())).collect(),
+
             delayed_auto_shift: 280,
             auto_repeat_rate: 50,
             soft_drop_rate: 30,
-
-            inputs: inputs.into_iter().map(|(i, k)| (i, k.to_string())).collect(),
         }
     }
 }

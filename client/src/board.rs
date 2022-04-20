@@ -140,7 +140,7 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
         let c = config.get();
         let c = c.borrow();
 
-        c.inputs.get_by_right(&e.key()).map(|input| {
+        c.keybinds.get_by_right(&e.key()).map(|input| {
             // don't do anything if the input was already pressed
             // these presses come from the operating system repeating inputs automatically
             if util::with_signal_mut(inputs, |inputs| inputs.set_pressed(input)).is_pressed() {
@@ -190,7 +190,7 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
         let c = config.get();
         let c = c.borrow();
 
-        c.inputs.get_by_right(&e.key()).map(|input| {
+        c.keybinds.get_by_right(&e.key()).map(|input| {
             util::with_signal_mut(inputs, |inputs| inputs.set_released(input));
 
             // cancel timers on release
