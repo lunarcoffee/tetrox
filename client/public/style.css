@@ -1,4 +1,6 @@
 * {
+    font-family: "Roboto";
+
     outline: none;
 }
 
@@ -6,8 +8,6 @@ body {
     background: url("assets/bg.png");
     background-size: cover;
     background-attachment: fixed;
-
-    font-family: "Rubik";
 
     padding: 0;
     margin: 0;
@@ -19,7 +19,7 @@ body {
 /* styles */
 
 .bold {
-    font-weight: 500;
+    font-weight: bold;
 }
 
 /* elements */
@@ -102,10 +102,10 @@ body {
 
 .config-heading {
     color: #f1f1f1;
+    font-family: "Roboto Condensed";
 
-    font-family: "Rubik";
     font-size: 1.15rem;
-    font-weight: 500;
+    font-weight: bold;
 
     margin: 14px 0;
 }
@@ -113,10 +113,6 @@ body {
 .config-option-label {
     font-size: 0.9rem;
     margin: 0;
-}
-
-.config-option>* {
-    font-family: "Rubik";
 }
 
 .config-option>select {
@@ -201,7 +197,6 @@ body {
 
 .game-stats>p {
     color: #ccc;
-    font-family: "Rubik";
 
     direction: rtl;
 }

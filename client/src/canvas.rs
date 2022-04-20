@@ -1,9 +1,9 @@
-use std::cell::RefCell;
+use std::{cell::RefCell, rc::Rc};
 
 use sycamore::{
     component,
     generic_node::{DomNode, Html},
-    prelude::{create_effect, create_node_ref, use_context, NodeRef, Scope, Signal},
+    prelude::{create_effect, create_node_ref, create_selector, use_context, NodeRef, ReadSignal, Scope, Signal},
     view,
     view::View,
     Prop,
@@ -15,7 +15,11 @@ use tetrox::{
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
-use crate::{board::AssetCache, config::Config, util};
+use crate::{
+    board::AssetCache,
+    config::{Config, FieldValues},
+    util,
+};
 
 pub const SQUARE_WIDTH: usize = 36; // the size of each square on the field
 
@@ -25,21 +29,6 @@ pub const PIECE_HEIGHT: usize = SQUARE_WIDTH * 3; // height of hold/queue piece
 pub const SIDE_BAR_WIDTH: usize = SQUARE_WIDTH * 5; // width of hold/queue panels
 pub const SIDE_BAR_PADDING: usize = SQUARE_WIDTH / 6; // bottom padding of hold/queue panels
 
-fn get_canvas_drawer<'a, P: PieceKind + 'static, G: Html>(
-    config: &'a Config,
-    canvas_ref: &NodeRef<G>,
-    field: &'a DefaultField<P>,
-    asset_cache: &'a AssetCache,
-) -> Option<CanvasDrawer<'a, P>> {
-    // get a `CanvasDrawer` for the given `canvas_ref`
-    canvas_ref.try_get::<DomNode>().map(|node| {
-        let canvas = node.unchecked_into::<HtmlCanvasElement>();
-        let context = canvas.get_context("2d").unwrap().unwrap();
-        let context = context.dyn_into::<CanvasRenderingContext2d>().unwrap();
-        CanvasDrawer::new(config, asset_cache, field, context)
-    })
-}
-
 #[component]
 pub fn HoldPiece<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
     let hold_piece_ref = create_node_ref(cx);
@@ -47,18 +36,19 @@ pub fn HoldPiece<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> 
         canvas(
             ref=hold_piece_ref,
             class="hold-piece-canvas",
-            width={ SIDE_BAR_WIDTH },
-            height={ LABEL_HEIGHT + PIECE_HEIGHT + SIDE_BAR_PADDING },
+            width=SIDE_BAR_WIDTH,
+            height=(LABEL_HEIGHT + PIECE_HEIGHT + SIDE_BAR_PADDING),
         )
     };
 
-    let config = use_context::<Signal<Config>>(cx);
     let field = use_context::<Signal<RefCell<DefaultField<P>>>>(cx);
     let asset_cache = use_context::<AssetCache>(cx);
 
+    let config = use_context::<Signal<RefCell<Config>>>(cx);
+    let skin_name = util::create_config_selector(cx, config, |c| c.skin_name.clone());
+
     create_effect(cx, || {
-        get_canvas_drawer(&config.get(), hold_piece_ref, &field.get().borrow(), asset_cache)
-            .map(|c| c.draw_hold_piece());
+        get_canvas_drawer(hold_piece_ref, &field.get().borrow(), asset_cache, skin_name).map(|c| c.draw_hold_piece());
     });
 
     view
@@ -66,23 +56,34 @@ pub fn HoldPiece<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> 
 
 #[component]
 pub fn Field<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
-    let config = use_context::<Signal<Config>>(cx);
+    let field_vals = use_context::<ReadSignal<FieldValues>>(cx);
+    let field_dims = create_selector(cx, || {
+        let field_vals = field_vals.get();
+        (field_vals.width, field_vals.height, field_vals.hidden)
+    });
     let field_ref = create_node_ref(cx);
+
     let view = view! { cx,
         canvas(
             ref=field_ref,
             class="field-canvas",
-            width={ SQUARE_WIDTH * config.get().field_width },
-            height={ SQUARE_WIDTH * config.get().field_height },
-            style={ format!("margin-top: -{}px;", SQUARE_WIDTH * config.get().field_hidden) },
+            width=(SQUARE_WIDTH * field_dims.get().0),
+            height=(SQUARE_WIDTH * field_dims.get().1),
+            style=format!("margin-top: -{}px;", SQUARE_WIDTH * field_dims.get().2),
         )
     };
 
     let field = use_context::<Signal<RefCell<DefaultField<P>>>>(cx);
     let asset_cache = use_context::<AssetCache>(cx);
 
+    let config = use_context::<Signal<RefCell<Config>>>(cx);
+    let field_drawer_values = util::create_config_selector(cx, config, |c| (c.shadow_opacity, c.topping_out_enabled));
+    let skin_name = util::create_config_selector(cx, config, |c| c.skin_name.clone());
+
     create_effect(cx, || {
-        get_canvas_drawer(&config.get(), field_ref, &field.get().borrow(), asset_cache).map(|c| c.draw_field());
+        let field_drawer_values = field_drawer_values.get();
+        get_canvas_drawer(field_ref, &field.get().borrow(), asset_cache, skin_name)
+            .map(|c| c.draw_field(field_drawer_values.0, field_drawer_values.1));
     });
 
     view
@@ -95,47 +96,68 @@ pub struct NextQueueProps<'a, P: PieceKind> {
 
 #[component]
 pub fn NextQueue<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>, props: NextQueueProps<'a, P>) -> View<G> {
-    let config = use_context::<Signal<Config>>(cx);
+    let field_vals = use_context::<ReadSignal<FieldValues>>(cx);
+    let queue_len = create_selector(cx, || field_vals.get().queue_len);
     let next_queue_ref = create_node_ref(cx);
+
     let view = view! { cx,
         canvas(
             ref=next_queue_ref,
             class="next-queue-canvas",
-            width={ SIDE_BAR_WIDTH },
-            height={ LABEL_HEIGHT + PIECE_HEIGHT * config.get().queue_len + SIDE_BAR_PADDING },
+            width=SIDE_BAR_WIDTH,
+            height=(LABEL_HEIGHT + PIECE_HEIGHT * *queue_len.get() + SIDE_BAR_PADDING),
         )
     };
 
     let field = use_context::<Signal<RefCell<DefaultField<P>>>>(cx);
     let asset_cache = use_context::<AssetCache>(cx);
 
+    let config = use_context::<Signal<RefCell<Config>>>(cx);
+    let queue_len = util::create_config_selector(cx, config, |c| c.queue_len);
+    let skin_name = util::create_config_selector(cx, config, |c| c.skin_name.clone());
+
     create_effect(cx, || {
-        get_canvas_drawer(&config.get(), next_queue_ref, &field.get().borrow(), asset_cache)
-            .map(|c| c.draw_next_queue(props.bag));
+        get_canvas_drawer(next_queue_ref, &field.get().borrow(), asset_cache, skin_name)
+            .map(|c| c.draw_next_queue(props.bag, *queue_len.get()));
     });
 
     view
 }
 
+fn get_canvas_drawer<'a, P: PieceKind + 'static, G: Html>(
+    canvas_ref: &NodeRef<G>,
+    field: &'a DefaultField<P>,
+    asset_cache: &'a AssetCache,
+    skin_name: &'a ReadSignal<String>,
+) -> Option<CanvasDrawer<'a, P>> {
+    // get a `CanvasDrawer` for the given `canvas_ref`
+    canvas_ref.try_get::<DomNode>().map(|node| {
+        let canvas = node.unchecked_into::<HtmlCanvasElement>();
+        let context = canvas.get_context("2d").unwrap().unwrap();
+        let context = context.dyn_into::<CanvasRenderingContext2d>().unwrap();
+        CanvasDrawer::new(asset_cache, field, context, skin_name.get())
+    })
+}
+
 pub struct CanvasDrawer<'a, P: PieceKind> {
-    config: &'a Config,
     asset_cache: &'a AssetCache,
     field: &'a DefaultField<P>,
     context: CanvasRenderingContext2d,
+    skin_name: Rc<String>,
 }
 
 impl<'a, P: PieceKind> CanvasDrawer<'a, P> {
     pub fn new(
-        config: &'a Config,
         asset_cache: &'a AssetCache,
         field: &'a DefaultField<P>,
         context: CanvasRenderingContext2d,
+        skin_name: Rc<String>,
     ) -> Self {
         CanvasDrawer {
-            config,
             asset_cache,
             field,
             context,
+            skin_name,
         }
     }
 
@@ -152,17 +174,17 @@ impl<'a, P: PieceKind> CanvasDrawer<'a, P> {
         ctx.fill_rect(0.0, 0.0, SIDE_BAR_WIDTH as f64, hp_h_px);
 
         // draw label
-        ctx.set_fill_style(&"#bbb".into());
+        ctx.set_fill_style(&"#ccc".into());
         ctx.set_global_alpha(1.0);
-        ctx.set_font("18px Rubik");
-        ctx.fill_text("hold", 8.0, 24.0).unwrap();
+        ctx.set_font("bold 18px 'Roboto Condensed'");
+        ctx.fill_text("HOLD", 8.0, 24.0).unwrap();
 
         if let Some(kind) = self.field.hold_piece() {
             self.draw_piece(kind, SIDE_BAR_WIDTH / 2, LABEL_HEIGHT + PIECE_HEIGHT / 2)
         }
     }
 
-    fn draw_field(&self) {
+    fn draw_field(&self, shadow_opacity: f64, topping_out_enabled: bool) {
         let field = self.field;
 
         // field width and height in squares
@@ -201,10 +223,9 @@ impl<'a, P: PieceKind> CanvasDrawer<'a, P> {
             ctx.stroke();
         }
 
-        ctx.set_global_alpha(self.config.shadow_opacity);
-        ctx.set_global_alpha(0.3);
+        ctx.set_global_alpha(shadow_opacity);
         let shadow_piece = field.shadow_piece();
-        let topped_out = field.topped_out() && self.config.topping_out_enabled;
+        let topped_out = field.topped_out() && topping_out_enabled;
 
         if !topped_out {
             for Coords(row, col) in shadow_piece.coords() {
@@ -225,11 +246,9 @@ impl<'a, P: PieceKind> CanvasDrawer<'a, P> {
         }
     }
 
-    fn draw_next_queue(&self, bag: &Signal<RefCell<SingleBag<P>>>) {
-        let queue_len = self.config.queue_len;
-
+    fn draw_next_queue(&self, bag: &Signal<RefCell<SingleBag<P>>>, queue_len: usize) {
         // total height of queue in pixels
-        let nq_h_px = (LABEL_HEIGHT + PIECE_HEIGHT * self.config.queue_len + SIDE_BAR_PADDING) as f64;
+        let nq_h_px = (LABEL_HEIGHT + PIECE_HEIGHT * queue_len + SIDE_BAR_PADDING) as f64;
 
         let ctx = &self.context;
         ctx.set_fill_style(&"black".into());
@@ -241,10 +260,10 @@ impl<'a, P: PieceKind> CanvasDrawer<'a, P> {
         ctx.fill_rect(0.0, 0.0, SIDE_BAR_WIDTH as f64, nq_h_px);
 
         // draw label
-        ctx.set_fill_style(&"#bbb".into());
+        ctx.set_fill_style(&"#ccc".into());
         ctx.set_global_alpha(1.0);
-        ctx.set_font("18px Rubik");
-        ctx.fill_text("next", 8.0, 24.0).unwrap();
+        ctx.set_font("bold 18px 'Roboto Condensed'");
+        ctx.fill_text("NEXT", 8.0, 24.0).unwrap();
 
         util::with_signal_mut_silent(bag, |bag| {
             for (nth, kind) in bag.peek().take(queue_len).enumerate() {
@@ -276,7 +295,7 @@ impl<'a, P: PieceKind> CanvasDrawer<'a, P> {
 
     // draw a square at the given coords on a canvas
     fn draw_square(&self, asset_name: &str, row: usize, col: usize) {
-        let asset_name = format!("assets/skins/tetrox/{}.png", asset_name);
+        let asset_name = format!("assets/skins/{}/{}.png", self.skin_name, asset_name);
         let asset = &self.asset_cache.get(&asset_name).unwrap();
 
         self.context

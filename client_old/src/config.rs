@@ -148,8 +148,8 @@ pub enum ConfigMessage {
 
     ResetToDefault,
     ToggleUi,
+    
 }
-
 // config panel which wraps a `Board` component
 pub struct ConfigPanelWrapper {
     config: Config,

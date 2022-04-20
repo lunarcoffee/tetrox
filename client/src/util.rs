@@ -1,6 +1,14 @@
 use std::cell::RefCell;
 
-use sycamore::prelude::Signal;
+use sycamore::{
+    component,
+    generic_node::Html,
+    prelude::{Scope, Signal, ReadSignal, create_selector},
+    view,
+    view::View,
+};
+
+use crate::config::Config;
 
 // allows `op` to run with a `&mut T` of the signal value
 // not notifying subscribers is sometimes necessary to avoid dependency issues in nested calls
@@ -38,4 +46,18 @@ pub fn with_signal_mut<T, R>(signal: &Signal<RefCell<T>>, op: impl FnMut(&mut T)
 pub fn notify_subscribers<T>(signal: &Signal<RefCell<T>>) {
     let value_rc = signal.get_untracked(); // TODO: will this being untracked cause issues?
     signal.set_rc(value_rc);
+}
+
+// used to select specific config options to update on as opposed to updating on every config value change, even if the
+// updated value isn't used in a given computation
+pub fn create_config_selector<'a, T, F>(
+    cx: Scope<'a>,
+    config: &'a Signal<RefCell<Config>>,
+    mut op: F,
+) -> &'a ReadSignal<T>
+where
+    T: PartialEq + 'a,
+    F: FnMut(&Config) -> T + 'a,
+{
+    create_selector(cx, move || op(&config.get().borrow()))
 }

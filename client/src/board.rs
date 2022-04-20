@@ -4,7 +4,7 @@ use crate::{
     util,
 };
 
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap};
 
 use js_sys::Date;
 use strum::IntoEnumIterator;
@@ -27,90 +27,11 @@ use tetrox::{
 use wasm_bindgen::JsCast;
 use web_sys::{Event, HtmlImageElement, KeyboardEvent};
 
-pub type AssetCache = HashMap<String, HtmlImageElement>;
-
-fn make_asset_cache() -> AssetCache {
-    <SrsTetromino as PieceKind>::iter()
-        .map(|k| k.asset_name().to_string())
-        .chain(["grey".to_string()])
-        .map(|asset_name| {
-            let field_square_mul = canvas::SQUARE_WIDTH as u32;
-            let image = HtmlImageElement::new_with_width_and_height(field_square_mul, field_square_mul).unwrap();
-
-            let asset_src = format!("assets/skins/{}/{}.png", "tetrox", asset_name);
-            image.set_src(&asset_src);
-
-            (asset_src.to_string(), image)
-        })
-        .collect()
-}
-
-// used to select specific config options to update on as opposed to updating on every config value change, even if the
-// updated value isn't used in a given computation
-pub fn create_config_selector<'a, T, F>(cx: Scope<'a>, config: &'a Signal<Config>, mut op: F) -> &'a ReadSignal<T>
-where
-    T: PartialEq + 'a,
-    F: FnMut(Rc<Config>) -> T + 'a,
-{
-    create_selector(cx, move || op(config.get()))
-}
-
-struct Timer<'a>(RefCell<ActionTimerInner<'a>>);
-
-struct ActionTimerInner<'a> {
-    cx: Scope<'a>,
-
-    duration: u32,
-    is_finished: &'a Signal<bool>,
-    stop_fn: Option<&'a dyn Fn()>,
-}
-
-impl<'a> Timer<'a> {
-    fn new(cx: Scope<'a>, duration: u32) -> Self {
-        Timer(RefCell::new(ActionTimerInner {
-            cx,
-
-            duration,
-            is_finished: create_signal(cx, false),
-            stop_fn: None,
-        }))
-    }
-
-    // this value is reactive and should be used to perform an action on completion of the timeout
-    fn is_finished(&self) -> bool { *self.0.borrow().is_finished.get() }
-
-    // run the timer, setting the `is_finished` signal to true when the `duration` has elapsed
-    fn start(&self) {
-        // stop the timer before starting it again
-        self.stop();
-
-        let end_time = Date::now() + self.0.borrow().duration as f64;
-        let is_finished = self.0.borrow().is_finished.clone();
-
-        // loop that keeps running until the specified duration has elapsed
-        let (_, start, stop) = create_raf_loop(self.0.borrow().cx, move || {
-            let keep_running = Date::now() < end_time;
-            if !keep_running {
-                is_finished.set(true);
-            }
-            keep_running
-        });
-
-        self.0.borrow_mut().stop_fn = Some(stop);
-        start()
-    }
-
-    // stop any currently running timer and mark it as unfinished, effectively resetting it
-    fn stop(&self) {
-        self.0.borrow().stop_fn.map(|stop| stop());
-        self.0.borrow().is_finished.set(false);
-    }
-}
-
 #[component]
 pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
-    let config = use_context::<Signal<Config>>(cx);
+    let config = use_context::<Signal<RefCell<Config>>>(cx);
     let c = config.get();
+    let c = c.borrow();
 
     let mut bag = SingleBag::<P>::new();
     let field = DefaultField::new(c.field_width, c.field_height, c.field_hidden, &mut bag);
@@ -121,7 +42,7 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
     let bag = create_signal(cx, RefCell::new(bag));
 
     // update field on field dimension config option updates
-    let field_dims = create_config_selector(cx, config, |c| (c.field_width, c.field_height, c.field_hidden));
+    let field_dims = util::create_config_selector(cx, config, |c| (c.field_width, c.field_height, c.field_hidden));
     create_effect(cx, || {
         let (width, height, hidden) = *field_dims.get();
         let new_field = util::with_signal_mut_untracked(bag, |bag| DefaultField::new(width, height, hidden, bag));
@@ -132,13 +53,13 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
     provide_context(cx, make_asset_cache());
 
     // board css style config options
-    let style_values = create_config_selector(cx, config, |c| (c.field_zoom * 100.0, c.vertical_offset));
+    let style_values = util::create_config_selector(cx, config, |c| (c.field_zoom * 100.0, c.vertical_offset));
     let game_style = style_values.map(cx, |d| format!("transform: scale({}%); margin-top: {}px;", d.0, d.1));
 
     // loop timer durations
-    let das_arr = create_config_selector(cx, config, |c| (c.delayed_auto_shift, c.auto_repeat_rate));
+    let das_arr = util::create_config_selector(cx, config, |c| (c.delayed_auto_shift, c.auto_repeat_rate));
     let arr = das_arr.map(cx, |d| d.1);
-    let sdr = create_config_selector(cx, config, |c| c.soft_drop_rate);
+    let sdr = util::create_config_selector(cx, config, |c| c.soft_drop_rate);
 
     let inputs = create_signal(cx, RefCell::new(InputStates::new()));
 
@@ -171,7 +92,7 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
             let timer = timer.get();
             if timer.is_finished() {
                 timer.stop(); // reset for the next buffer timer activation
-                
+
                 let state = inputs.get_untracked().borrow().get_state(&input);
                 if state.is_held() {
                     if state.is_pressed() {
@@ -217,6 +138,7 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
     let keydown_handler = |e: Event| {
         let e = e.dyn_into::<KeyboardEvent>().unwrap();
         let c = config.get();
+        let c = c.borrow();
 
         c.inputs.get_by_right(&e.key()).map(|input| {
             // don't do anything if the input was already pressed
@@ -266,6 +188,7 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
     let keyup_handler = |e: Event| {
         let e = e.dyn_into::<KeyboardEvent>().unwrap();
         let c = config.get();
+        let c = c.borrow();
 
         c.inputs.get_by_right(&e.key()).map(|input| {
             util::with_signal_mut(inputs, |inputs| inputs.set_released(input));
@@ -282,11 +205,82 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
     };
 
     view! { cx,
-        div(class="game", tabindex="0", style=(game_style.get()), on:keydown=keydown_handler, on:keyup=keyup_handler) {
+        div(class="game", tabindex="0", style=game_style.get(), on:keydown=keydown_handler, on:keyup=keyup_handler) {
             div(class="field-panel") { div(class="hold-piece") { HoldPiece::<P, G> {} } }
             div(class="field") { Field::<P, G> {} }
             div(class="next-queue") { NextQueue { bag } }
         }
+    }
+}
+
+pub type AssetCache = HashMap<String, HtmlImageElement>;
+
+fn make_asset_cache() -> AssetCache {
+    <SrsTetromino as PieceKind>::iter()
+        .map(|k| k.asset_name().to_string())
+        .chain(["grey".to_string()])
+        .flat_map(|asset_name| {
+            let field_square_mul = canvas::SQUARE_WIDTH as u32;
+            crate::SKIN_NAMES.iter().map(move |skin| {
+                let image = HtmlImageElement::new_with_width_and_height(field_square_mul, field_square_mul).unwrap();
+                let asset_src = format!("assets/skins/{}/{}.png", skin, asset_name);
+                image.set_src(&asset_src);
+                (asset_src.to_string(), image)
+            })
+        })
+        .collect()
+}
+
+// a resettable timer that waits for a timeout and sets a flag upon completion
+struct Timer<'a>(RefCell<TimerInner<'a>>);
+
+struct TimerInner<'a> {
+    cx: Scope<'a>,
+
+    duration: u32,
+    is_finished: &'a Signal<bool>,
+    stop_fn: Option<&'a dyn Fn()>,
+}
+
+impl<'a> Timer<'a> {
+    fn new(cx: Scope<'a>, duration: u32) -> Self {
+        Timer(RefCell::new(TimerInner {
+            cx,
+
+            duration,
+            is_finished: create_signal(cx, false),
+            stop_fn: None,
+        }))
+    }
+
+    // this value is reactive and should be used to perform an action on completion of the timeout
+    fn is_finished(&self) -> bool { *self.0.borrow().is_finished.get() }
+
+    // run the timer, setting the `is_finished` signal to true when the `duration` has elapsed
+    fn start(&self) {
+        // stop the timer before starting it again
+        self.stop();
+
+        let end_time = Date::now() + self.0.borrow().duration as f64;
+        let is_finished = self.0.borrow().is_finished.clone();
+
+        // loop that keeps running until the specified duration has elapsed
+        let (_, start, stop) = create_raf_loop(self.0.borrow().cx, move || {
+            let keep_running = Date::now() < end_time;
+            if !keep_running {
+                is_finished.set(true);
+            }
+            keep_running
+        });
+
+        self.0.borrow_mut().stop_fn = Some(stop);
+        start()
+    }
+
+    // stop any currently running timer and mark it as unfinished, effectively resetting it
+    fn stop(&self) {
+        self.0.borrow().stop_fn.map(|stop| stop());
+        self.0.borrow().is_finished.set(false);
     }
 }
 
