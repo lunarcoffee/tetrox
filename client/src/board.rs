@@ -13,7 +13,7 @@ use sycamore::{
     generic_node::Html,
     motion::create_raf_loop,
     prelude::{
-        create_effect, create_selector, create_signal, provide_context, provide_context_ref, use_context, ReadSignal,
+        create_effect, create_signal, provide_context, provide_context_ref, use_context, ReadSignal,
         Scope, Signal,
     },
     view,

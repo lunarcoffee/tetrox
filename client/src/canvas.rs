@@ -176,8 +176,8 @@ impl<'a, P: PieceKind> CanvasDrawer<'a, P> {
         // draw label
         ctx.set_fill_style(&"#ccc".into());
         ctx.set_global_alpha(1.0);
-        ctx.set_font("bold 18px 'Roboto Condensed'");
-        ctx.fill_text("HOLD", 8.0, 24.0).unwrap();
+        ctx.set_font("18px 'IBM Plex Sans'");
+        ctx.fill_text("hold", 8.0, 24.0).unwrap();
 
         if let Some(kind) = self.field.hold_piece() {
             self.draw_piece(kind, SIDE_BAR_WIDTH / 2, LABEL_HEIGHT + PIECE_HEIGHT / 2)
@@ -262,8 +262,8 @@ impl<'a, P: PieceKind> CanvasDrawer<'a, P> {
         // draw label
         ctx.set_fill_style(&"#ccc".into());
         ctx.set_global_alpha(1.0);
-        ctx.set_font("bold 18px 'Roboto Condensed'");
-        ctx.fill_text("NEXT", 8.0, 24.0).unwrap();
+        ctx.set_font("18px 'IBM Plex Sans'");
+        ctx.fill_text("next", 8.0, 24.0).unwrap();
 
         util::with_signal_mut_silent(bag, |bag| {
             for (nth, kind) in bag.peek().take(queue_len).enumerate() {

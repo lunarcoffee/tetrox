@@ -63,9 +63,10 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
                 } }
             }
             gen_config_setter_match! {
-                field_width; FieldWidth, queue_len; QueueLen, skin_name; SkinName, field_zoom; FieldZoom,
-                vertical_offset; VerticalOffset, shadow_opacity; ShadowOpacity, delayed_auto_shift; DelayedAutoShift,
-                auto_repeat_rate; AutoRepeatRate, soft_drop_rate; SoftDropRate
+                gravity_delay; GravityDelay, lock_delay; LockDelay, move_limit; MoveLimit, field_width; FieldWidth,
+                queue_len; QueueLen, skin_name; SkinName, field_zoom; FieldZoom, vertical_offset; VerticalOffset,
+                shadow_opacity; ShadowOpacity, delayed_auto_shift; DelayedAutoShift, auto_repeat_rate; AutoRepeatRate,
+                soft_drop_rate; SoftDropRate
             }
         });
     };
@@ -82,32 +83,40 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
         }
     }
     gen_config_signals! {
-        field_width; FieldWidth, field_hidden; FieldHidden, queue_len; QueueLen, skin_name; SkinName,
-        field_zoom; FieldZoom, vertical_offset; VerticalOffset, shadow_opacity; ShadowOpacity,
+        gravity_delay; GravityDelay, lock_delay; LockDelay, move_limit; MoveLimit,
+        topping_out_enabled; ToppingOutEnabled, auto_lock_enabled; AutoLockEnabled, gravity_enabled; GravityEnabled,
+        move_limit_enabled; MoveLimitEnabled, field_width; FieldWidth, field_hidden; FieldHidden, queue_len; QueueLen,
+        skin_name; SkinName, field_zoom; FieldZoom, vertical_offset; VerticalOffset, shadow_opacity; ShadowOpacity,
         delayed_auto_shift; DelayedAutoShift, auto_repeat_rate; AutoRepeatRate, soft_drop_rate; SoftDropRate
     };
 
+    let skin_name_items = crate::SKIN_NAMES.iter().map(|n| (*n, n.to_string())).collect();
+    
     view! { cx,
         div(class="content") {
             Game {}
             div(class="config-panel") {
-                // SectionHeading("Gameplay")
-                // RangeInput { label: "Gravity delay", min: 10, max: 5_000, step: 5, value: gravity_delay }
-                SectionHeading("Visual")
-                // select box block skin
-                SelectInput { 
-                    label: "Block skin",
-                    items: crate::SKIN_NAMES.iter().map(|n| (*n, n.to_string())).collect(), 
-                    value: skin_name 
+                SectionHeading("Gameplay")
+                RangeInput { label: "Gravity delay", min: 10, max: 5_000, step: 5, value: gravity_delay }
+                RangeInput { label: "Lock delay", min: 10, max: 3_000, step: 5, value: lock_delay }
+                RangeInput { label: "Move limit", min: 1, max: 100, step: 1, value: move_limit }
+                div(class="config-button-box") {
+                    ToggleButton { label: "Topping out", value: topping_out_enabled }
+                    ToggleButton { label: "Lock delay", value: auto_lock_enabled }
+                    ToggleButton { label: "Gravity", value: gravity_enabled }
+                    ToggleButton { label: "Move limit", value: move_limit_enabled }
                 }
-                RangeInput { label: "Field zoom", min: 0.1, max: 4.0, step: 0.05, value: field_zoom }
-                RangeInput { label: "Vertical offset", min: -2_000, max: 2_000, step: 10, value: vertical_offset }
-                RangeInput { label: "Shadow opacity", min: 0.0, max: 1.0, step: 0.05, value: shadow_opacity }
 
                 SectionHeading("Board")
                 RangeInput { label: "Field width", min: 4, max: 100, step: 1, value: field_width }
                 RangeInput { label: "Field height", min: 3, max: 100, step: 1, value: field_hidden }
                 RangeInput { label: "Queue length", min: 0, max: 7, step: 1, value: queue_len }
+
+                SectionHeading("Visual")
+                SelectInput { label: "Block skin", items: skin_name_items, value: skin_name }
+                RangeInput { label: "Field zoom", min: 0.1, max: 4.0, step: 0.05, value: field_zoom }
+                RangeInput { label: "Vertical offset", min: -2_000, max: 2_000, step: 10, value: vertical_offset }
+                RangeInput { label: "Shadow opacity", min: 0.0, max: 1.0, step: 0.05, value: shadow_opacity }
 
                 SectionHeading("Handling")
                 RangeInput { label: "DAS", min: 0, max: 500, step: 1, value: delayed_auto_shift }
@@ -194,6 +203,29 @@ where
     }
 }
 
+#[derive(Prop)]
+struct ToggleButtonProps<'a> {
+    label: &'static str,
+    value: &'a Signal<bool>,
+}
+
+#[component]
+fn ToggleButton<'a, G: Html>(cx: Scope<'a>, props: ToggleButtonProps<'a>) -> View<G> {
+    let ToggleButtonProps { label, value } = props;
+    let label = value.map(cx, move |v| format!("{} ({})", label, if *v { "on" } else { "off" }));
+
+    view! { cx,
+        div(class="config-option") {
+            input(
+                type="button",
+                class=format!("config-toggle-button-{}", label),
+                value=label.get(),
+                on:click=|_| value.set(!*value.get()),
+            )
+        }
+    }
+}
+
 #[component]
 fn SectionHeading<'a, G: Html>(cx: Scope<'a>, section: &'static str) -> View<G> {
     view! { cx, p(class="config-heading") { (section.to_uppercase()) } }
@@ -233,10 +265,10 @@ enum ConfigMsg {
     GravityDelay(u32),
     LockDelay(u32),
     MoveLimit(usize),
-    ToggleToppingOut,
-    ToggleAutoLock,
-    ToggleGravity,
-    ToggleMoveLimit,
+    ToppingOutEnabled(bool),
+    AutoLockEnabled(bool),
+    GravityEnabled(bool),
+    MoveLimitEnabled(bool),
 
     FieldWidth(usize),
     FieldHidden(usize),
@@ -278,18 +310,6 @@ pub type Keybind = String;
 // TODO: std::any::Any?
 #[derive(Serialize, Deserialize)]
 pub struct Config {
-    // visual settings
-    pub skin_name: String,
-    pub field_zoom: f64,
-    pub vertical_offset: i32,
-    pub shadow_opacity: f64,
-
-    // field property settings
-    pub field_width: usize,
-    pub field_height: usize,
-    pub field_hidden: usize,
-    pub queue_len: usize,
-
     // gameplay
     pub gravity_delay: u32,
     pub lock_delay: u32,
@@ -298,6 +318,18 @@ pub struct Config {
     pub auto_lock_enabled: bool,
     pub gravity_enabled: bool,
     pub move_limit_enabled: bool,
+
+    // field property settings
+    pub field_width: usize,
+    pub field_height: usize,
+    pub field_hidden: usize,
+    pub queue_len: usize,
+
+    // visual settings
+    pub skin_name: String,
+    pub field_zoom: f64,
+    pub vertical_offset: i32,
+    pub shadow_opacity: f64,
 
     // controls
     pub inputs: BiMap<Input, Keybind>,

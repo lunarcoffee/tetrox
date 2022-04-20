@@ -1,12 +1,6 @@
 use std::cell::RefCell;
 
-use sycamore::{
-    component,
-    generic_node::Html,
-    prelude::{Scope, Signal, ReadSignal, create_selector},
-    view,
-    view::View,
-};
+use sycamore::prelude::{create_selector, ReadSignal, Scope, Signal};
 
 use crate::config::Config;
 
