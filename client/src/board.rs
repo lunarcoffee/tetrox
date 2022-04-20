@@ -12,14 +12,14 @@ use sycamore::{
     component,
     generic_node::Html,
     prelude::{
-        create_effect, create_selector, create_selector_with, create_signal, provide_context, provide_context_ref,
+        create_effect, create_selector, create_signal, provide_context, provide_context_ref,
         use_context, use_scope_status, ReadSignal, Scope, Signal,
     },
     view,
     view::View,
 };
 use tetrox::{
-    field::{DefaultField, LivePiece},
+    field::DefaultField,
     tetromino::{SrsKickTable, SrsTetromino, TetrIo180KickTable},
     PieceKind, SingleBag,
 };
@@ -219,6 +219,22 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
         }
     });
 
+    let move_limit = util::create_config_selector(cx, config, |c| c.move_limit);
+    let actions_since_lock_delay = create_selector(cx, || {
+        field_signal.get().borrow().actions_since_lock_delay().unwrap_or(0)
+    });
+
+    // action limit (after piece touches stack)
+    create_effect(cx, || {
+        let limit_reached = actions_since_lock_delay.get() == move_limit.get_untracked();
+        if config.get_untracked().borrow().move_limit_enabled && limit_reached {
+            util::with_signal_mut_untracked(field_signal, |field| {
+                util::with_signal_mut_silent_untracked(bag, |bag| field.hard_drop(bag))
+            });
+            util::notify_subscribers(bag);
+        }
+    });
+
     let lock_delay = util::create_config_selector(cx, config, |c| c.lock_delay);
     let lock_delay_timer = lock_delay.map(cx, move |d| Timer::new(cx, *d));
     let cur_piece = create_selector(cx, || field_signal.get().borrow().cur_piece().coords().clone());
@@ -243,6 +259,7 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
     create_effect(cx, || {
         cur_piece.track();
         if field_signal.get_untracked().borrow().cur_piece_cannot_move_down() {
+            util::with_signal_mut_untracked(field_signal, |field| field.activate_lock_delay());
             lock_delay_piece.set((*cur_piece.get()).clone());
             lock_delay_timer.get().start();
         }

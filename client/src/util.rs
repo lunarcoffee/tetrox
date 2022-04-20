@@ -38,7 +38,7 @@ pub fn with_signal_mut<T, R>(signal: &Signal<RefCell<T>>, op: impl FnMut(&mut T)
 
 // not sure why this function is no longer public api like in 0.7.x but oh well
 pub fn notify_subscribers<T>(signal: &Signal<RefCell<T>>) {
-    let value_rc = signal.get_untracked(); // TODO: will this being untracked cause issues?
+    let value_rc = signal.get_untracked();
     signal.set_rc(value_rc);
 }
 
