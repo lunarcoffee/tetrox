@@ -7,21 +7,19 @@ use crate::{
 use std::{cell::RefCell, collections::HashMap, mem};
 
 use gloo_timers::callback::Timeout;
-use js_sys::Date;
 use strum::IntoEnumIterator;
 use sycamore::{
     component,
     generic_node::Html,
-    motion::create_raf_loop,
     prelude::{
-        create_effect, create_signal, provide_context, provide_context_ref, use_context, use_scope_status, ReadSignal,
-        Scope, Signal,
+        create_effect, create_selector, create_selector_with, create_signal, provide_context, provide_context_ref,
+        use_context, use_scope_status, ReadSignal, Scope, Signal,
     },
     view,
     view::View,
 };
 use tetrox::{
-    field::DefaultField,
+    field::{DefaultField, LivePiece},
     tetromino::{SrsKickTable, SrsTetromino, TetrIo180KickTable},
     PieceKind, SingleBag,
 };
@@ -92,8 +90,6 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
         create_effect(cx, move || {
             let timer = timer.get();
             if timer.is_finished() {
-                timer.stop(); // reset for the next buffer timer activation
-
                 let state = inputs.get_untracked().borrow().get_state(&input);
                 if state.is_held() {
                     if state.is_pressed() {
@@ -118,8 +114,6 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
             let buffer_timer = buffer_timer.get();
 
             if buffer_timer.is_finished() {
-                buffer_timer.stop(); // reset for the next buffer timer activation
-
                 // apply the action if the input is still held down
                 if inputs.get_untracked().borrow().get_state(&input).is_pressed() {
                     util::with_signal_mut_untracked(field_signal, |field| action.get().borrow_mut()(field));
@@ -215,12 +209,42 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
 
     // gravity
     create_effect(cx, move || {
+        // TODO: extract timer effect into function?`
         let timer = gravity_timer.get();
         if timer.is_finished() {
             if config.get_untracked().borrow().gravity_enabled {
                 util::with_signal_mut_untracked(field_signal, |field| gravity_action.get().borrow_mut()(field));
             }
             timer.start();
+        }
+    });
+
+    let lock_delay = util::create_config_selector(cx, config, |c| c.lock_delay);
+    let lock_delay_timer = lock_delay.map(cx, move |d| Timer::new(cx, *d));
+    let cur_piece = create_selector(cx, || field_signal.get().borrow().cur_piece().coords().clone());
+    let lock_delay_piece = create_signal(cx, (*cur_piece.get()).clone());
+
+    // auto lock
+    create_effect(cx, || {
+        let timer = lock_delay_timer.get();
+        if timer.is_finished() {
+            // lock the piece if it is the same as when the timer started
+            let still_same_piece = cur_piece.get_untracked() == lock_delay_piece.get_untracked();
+            if config.get_untracked().borrow().auto_lock_enabled && still_same_piece {
+                util::with_signal_mut_untracked(field_signal, |field| {
+                    util::with_signal_mut_silent_untracked(bag, |bag| field.hard_drop(bag))
+                });
+                util::notify_subscribers(bag);
+            }
+        }
+    });
+
+    // starts lock delay timer if the current piece touches the stack
+    create_effect(cx, || {
+        cur_piece.track();
+        if field_signal.get_untracked().borrow().cur_piece_cannot_move_down() {
+            lock_delay_piece.set((*cur_piece.get()).clone());
+            lock_delay_timer.get().start();
         }
     });
 
