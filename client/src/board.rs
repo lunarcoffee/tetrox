@@ -4,8 +4,9 @@ use crate::{
     util,
 };
 
-use std::{cell::RefCell, collections::HashMap};
+use std::{cell::RefCell, collections::HashMap, mem};
 
+use gloo_timers::callback::Timeout;
 use js_sys::Date;
 use strum::IntoEnumIterator;
 use sycamore::{
@@ -13,7 +14,7 @@ use sycamore::{
     generic_node::Html,
     motion::create_raf_loop,
     prelude::{
-        create_effect, create_signal, provide_context, provide_context_ref, use_context, ReadSignal,
+        create_effect, create_signal, provide_context, provide_context_ref, use_context, use_scope_status, ReadSignal,
         Scope, Signal,
     },
     view,
@@ -204,6 +205,25 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
         });
     };
 
+    let gravity_delay = util::create_config_selector(cx, config, |c| c.gravity_delay);
+    let gravity_action = loop_timer_shift_action!(1, 0, gravity_delay);
+    let gravity_timer = gravity_delay.map(cx, move |d| {
+        let timer = Timer::new(cx, *d);
+        timer.start();
+        timer
+    });
+
+    // gravity
+    create_effect(cx, move || {
+        let timer = gravity_timer.get();
+        if timer.is_finished() {
+            if config.get_untracked().borrow().gravity_enabled {
+                util::with_signal_mut_untracked(field_signal, |field| gravity_action.get().borrow_mut()(field));
+            }
+            timer.start();
+        }
+    });
+
     view! { cx,
         div(class="game", tabindex="0", style=game_style.get(), on:keydown=keydown_handler, on:keyup=keyup_handler) {
             div(class="field-panel") { div(class="hold-piece") { HoldPiece::<P, G> {} } }
@@ -238,8 +258,8 @@ struct TimerInner<'a> {
     cx: Scope<'a>,
 
     duration: u32,
+    timeout: Option<Timeout>,
     is_finished: &'a Signal<bool>,
-    stop_fn: Option<&'a dyn Fn()>,
 }
 
 impl<'a> Timer<'a> {
@@ -248,8 +268,8 @@ impl<'a> Timer<'a> {
             cx,
 
             duration,
+            timeout: None,
             is_finished: create_signal(cx, false),
-            stop_fn: None,
         }))
     }
 
@@ -258,28 +278,26 @@ impl<'a> Timer<'a> {
 
     // run the timer, setting the `is_finished` signal to true when the `duration` has elapsed
     fn start(&self) {
-        // stop the timer before starting it again
         self.stop();
 
-        let end_time = Date::now() + self.0.borrow().duration as f64;
+        let scope_alive = use_scope_status(self.0.borrow().cx);
         let is_finished = self.0.borrow().is_finished.clone();
 
-        // loop that keeps running until the specified duration has elapsed
-        let (_, start, stop) = create_raf_loop(self.0.borrow().cx, move || {
-            let keep_running = Date::now() < end_time;
-            if !keep_running {
+        // SAFETY: transmuting from 'a to 'static lets this be used in the timeout
+        // this is safe as we check if the scope is alive before calling the closure
+        let is_finished = unsafe { mem::transmute::<_, &'static Signal<bool>>(is_finished) };
+
+        let timeout = Timeout::new(self.0.borrow().duration, move || {
+            if *scope_alive.get() {
                 is_finished.set(true);
             }
-            keep_running
         });
-
-        self.0.borrow_mut().stop_fn = Some(stop);
-        start()
+        self.0.borrow_mut().timeout = Some(timeout);
     }
 
     // stop any currently running timer and mark it as unfinished, effectively resetting it
     fn stop(&self) {
-        self.0.borrow().stop_fn.map(|stop| stop());
+        self.0.borrow_mut().timeout.take().map(|t| t.cancel());
         self.0.borrow().is_finished.set(false);
     }
 }

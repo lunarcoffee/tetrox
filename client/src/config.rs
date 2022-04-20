@@ -71,7 +71,9 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
                 } }
             }
             gen_config_setter_match! {
-                gravity_delay; GravityDelay, lock_delay; LockDelay, move_limit; MoveLimit, field_width; FieldWidth,
+                gravity_delay; GravityDelay, lock_delay; LockDelay, move_limit; MoveLimit, 
+                topping_out_enabled; ToppingOutEnabled, auto_lock_enabled; AutoLockEnabled, 
+                gravity_enabled; GravityEnabled, move_limit_enabled; MoveLimitEnabled, field_width; FieldWidth,
                 queue_len; QueueLen, skin_name; SkinName, field_zoom; FieldZoom, vertical_offset; VerticalOffset,
                 shadow_opacity; ShadowOpacity, keybinds; Keybinds, delayed_auto_shift; DelayedAutoShift,
                 auto_repeat_rate; AutoRepeatRate, soft_drop_rate; SoftDropRate
@@ -110,7 +112,7 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
             Game {}
             div(class="config-panel") {
                 SectionHeading("Gameplay")
-                RangeInput { label: "Gravity delay", min: 10, max: 5_000, step: 5, value: gravity_delay }
+                RangeInput { label: "Gravity delay", min: 0, max: 5_000, step: 5, value: gravity_delay }
                 RangeInput { label: "Lock delay", min: 10, max: 3_000, step: 5, value: lock_delay }
                 RangeInput { label: "Move limit", min: 1, max: 100, step: 1, value: move_limit }
                 div(class="config-button-box") {
