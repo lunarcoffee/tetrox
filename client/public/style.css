@@ -201,17 +201,22 @@ body {
     direction: rtl;
 }
 
-.game-stats-clear-text {
-    font-size: 1.8rem;
+.game-stats>.clear-text {
+    font-size: 2rem;
+    font-family: "Roboto Condensed";
+    font-weight: bold;
+
     margin-bottom: -0.7rem;
 }
 
-.game-stats-b2b-text {
+.game-stats>.b2b-text {
     font-size: 1.4rem;
+    font-weight: bold;
 }
 
-.game-stats-combo-text {
+.game-stats>.combo-text {
     font-size: 1.4rem;
+    margin: 2.5rem 0 -0.5rem 0;
 }
 
 .field {

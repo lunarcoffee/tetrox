@@ -38,6 +38,7 @@ impl<P: PieceKind> Line<P> {
     fn get_mut(&mut self, i: usize) -> &mut Square<P> { &mut self.squares[i] }
 }
 
+#[derive(Clone)]
 pub struct LineClear<P: PieceKind> {
     n_lines: usize,
     spin: Option<P>,

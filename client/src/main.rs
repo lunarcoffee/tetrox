@@ -8,8 +8,8 @@ mod board;
 mod game;
 mod config;
 mod canvas;
-mod menu;
 mod util;
+mod stats;
 
 pub const SKIN_NAMES: &[&str] = &["tetrox", "gradient", "inset", "rounded", "solid"];
 

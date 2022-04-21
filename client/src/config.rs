@@ -360,7 +360,7 @@ enum ConfigMsg {
     AutoRepeatRate(u32),
     SoftDropRate(u32),
 
-    ToggleUi,
+    _ToggleUi,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, EnumIter)]

@@ -1,6 +1,7 @@
 use crate::{
     canvas::{self, Field, HoldPiece, NextQueue},
     config::{Config, Input},
+    stats::Stats,
     util,
 };
 
@@ -12,14 +13,14 @@ use sycamore::{
     component,
     generic_node::Html,
     prelude::{
-        create_effect, create_selector, create_signal, provide_context, provide_context_ref,
-        use_context, use_scope_status, ReadSignal, Scope, Signal,
+        create_effect, create_selector, create_signal, provide_context, provide_context_ref, use_context,
+        use_scope_status, ReadSignal, Scope, Signal,
     },
     view,
     view::View,
 };
 use tetrox::{
-    field::DefaultField,
+    field::{DefaultField, LineClear},
     tetromino::{SrsKickTable, SrsTetromino, TetrIo180KickTable},
     PieceKind, SingleBag,
 };
@@ -87,18 +88,14 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
         // derive timer from looping interval
         let timer = duration.map(cx, move |d| Timer::new(cx, *d));
 
-        create_effect(cx, move || {
-            let timer = timer.get();
-            if timer.is_finished() {
-                let state = inputs.get_untracked().borrow().get_state(&input);
-                if state.is_held() {
-                    if state.is_pressed() {
-                        util::with_signal_mut_untracked(field_signal, |field| action.get().borrow_mut()(field));
-                    }
-                    // continue the timer loop if the input is held (pressed or suppressed)
-                    timer.start();
+        create_timer_finish_effect(cx, timer, move || {
+            let state = inputs.get_untracked().borrow().get_state(&input);
+            if state.is_held() {
+                if state.is_pressed() {
+                    util::with_signal_mut_untracked(field_signal, |field| action.get().borrow_mut()(field));
                 }
             }
+            state.is_held() // continue the timer loop if the input is held (pressed or suppressed)
         });
 
         timer
@@ -110,16 +107,13 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
         let buffer_timer = durations.map(cx, move |d| Timer::new(cx, d.0));
         let loop_timer = loop_timer(durations.map(cx, |d| d.1), input, action);
 
-        create_effect(cx, move || {
-            let buffer_timer = buffer_timer.get();
-
-            if buffer_timer.is_finished() {
-                // apply the action if the input is still held down
-                if inputs.get_untracked().borrow().get_state(&input).is_pressed() {
-                    util::with_signal_mut_untracked(field_signal, |field| action.get().borrow_mut()(field));
-                }
-                loop_timer.get().start(); // activate the loop timer
+        create_timer_finish_effect(cx, buffer_timer, move || {
+            // apply the action if the input is still held down
+            if inputs.get_untracked().borrow().get_state(&input).is_pressed() {
+                util::with_signal_mut_untracked(field_signal, |field| action.get().borrow_mut()(field));
             }
+            loop_timer.get().start(); // activate the loop timer
+            false
         });
 
         buffer_timer
@@ -129,6 +123,9 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
     let left_timer = buffered_loop_timer(das_arr, Input::Left, left_action);
     let right_timer = buffered_loop_timer(das_arr, Input::Right, right_action);
     let soft_drop_timer = loop_timer(sdr, Input::SoftDrop, soft_drop_action);
+
+    // previous line clear type (used for stats)
+    let last_line_clear = create_signal(cx, None::<LineClear<P>>);
 
     let keydown_handler = |e: Event| {
         let e = e.dyn_into::<KeyboardEvent>().unwrap();
@@ -153,7 +150,6 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
                     Input::Left => shift_and_start_timer(0, -1, left_timer),
                     Input::Right => shift_and_start_timer(0, 1, right_timer),
                     Input::SoftDrop => shift_and_start_timer(1, 0, soft_drop_timer),
-                    Input::HardDrop => drop(util::with_signal_mut_silent(bag, |bag| field.hard_drop(bag))),
                     Input::RotateCw => drop(field.try_rotate_cw(&SrsKickTable)),
                     Input::RotateCcw => drop(field.try_rotate_ccw(&SrsKickTable)),
                     Input::Rotate180 => drop(field.try_rotate_180(&TetrIo180KickTable)),
@@ -162,15 +158,19 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
                 }
             });
 
-            // handle game resetting separately as `with_signal_mut` will replace the new field with the old one
-            // after the closure executes
-            if input == &Input::Reset {
-                let mut new_bag = SingleBag::new();
-                let field = DefaultField::new(c.field_width, c.field_height, c.field_hidden, &mut new_bag);
+            match input {
+                // handle game resetting separately as `with_signal_mut` will replace the new field with the old one
+                // after the closure executes
+                Input::Reset => {
+                    let mut new_bag = SingleBag::new();
+                    let field = DefaultField::new(c.field_width, c.field_height, c.field_hidden, &mut new_bag);
 
-                field_signal.set(RefCell::new(field));
-                bag.set(RefCell::new(new_bag));
-                inputs.set(RefCell::new(InputStates::new()));
+                    field_signal.set(RefCell::new(field));
+                    bag.set(RefCell::new(new_bag));
+                    inputs.set(RefCell::new(InputStates::new()));
+                }
+                Input::HardDrop => hard_drop(field_signal, bag, last_line_clear),
+                _ => {}
             }
 
             // only notify bag subscribers after the field is updated
@@ -208,15 +208,11 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
     });
 
     // gravity
-    create_effect(cx, move || {
-        // TODO: extract timer effect into function?`
-        let timer = gravity_timer.get();
-        if timer.is_finished() {
-            if config.get_untracked().borrow().gravity_enabled {
-                util::with_signal_mut_untracked(field_signal, |field| gravity_action.get().borrow_mut()(field));
-            }
-            timer.start();
+    create_timer_finish_effect(cx, gravity_timer, || {
+        if config.get_untracked().borrow().gravity_enabled {
+            util::with_signal_mut_untracked(field_signal, |field| gravity_action.get().borrow_mut()(field));
         }
+        true
     });
 
     let move_limit = util::create_config_selector(cx, config, |c| c.move_limit);
@@ -228,10 +224,7 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
     create_effect(cx, || {
         let limit_reached = actions_since_lock_delay.get() == move_limit.get_untracked();
         if config.get_untracked().borrow().move_limit_enabled && limit_reached {
-            util::with_signal_mut_untracked(field_signal, |field| {
-                util::with_signal_mut_silent_untracked(bag, |bag| field.hard_drop(bag))
-            });
-            util::notify_subscribers(bag);
+            hard_drop(field_signal, bag, last_line_clear);
         }
     });
 
@@ -241,18 +234,13 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
     let lock_delay_piece = create_signal(cx, (*cur_piece.get()).clone());
 
     // auto lock
-    create_effect(cx, || {
-        let timer = lock_delay_timer.get();
-        if timer.is_finished() {
-            // lock the piece if it is the same as when the timer started
-            let still_same_piece = cur_piece.get_untracked() == lock_delay_piece.get_untracked();
-            if config.get_untracked().borrow().auto_lock_enabled && still_same_piece {
-                util::with_signal_mut_untracked(field_signal, |field| {
-                    util::with_signal_mut_silent_untracked(bag, |bag| field.hard_drop(bag))
-                });
-                util::notify_subscribers(bag);
-            }
+    create_timer_finish_effect(cx, lock_delay_timer, || {
+        // lock the piece if it is the same as when the timer started
+        let still_same_piece = cur_piece.get_untracked() == lock_delay_piece.get_untracked();
+        if config.get_untracked().borrow().auto_lock_enabled && still_same_piece {
+            hard_drop(field_signal, bag, last_line_clear);
         }
+        false
     });
 
     // starts lock delay timer if the current piece touches the stack
@@ -267,7 +255,10 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
 
     view! { cx,
         div(class="game", tabindex="0", style=game_style.get(), on:keydown=keydown_handler, on:keyup=keyup_handler) {
-            div(class="field-panel") { div(class="hold-piece") { HoldPiece::<P, G> {} } }
+            div(class="field-panel") {
+                div(class="hold-piece") { HoldPiece::<P, G> {} }
+                div(class="game-stats") { Stats { last_line_clear } }
+            }
             div(class="field") { Field::<P, G> {} }
             div(class="next-queue") { NextQueue { bag } }
         }
@@ -290,6 +281,27 @@ fn make_asset_cache() -> AssetCache {
             })
         })
         .collect()
+}
+
+// effect executed when the given `timer` finishes
+// if `op` returns true, the timer will start again (making a loop)
+fn create_timer_finish_effect<'a>(cx: Scope<'a>, timer: &'a ReadSignal<Timer>, mut op: impl FnMut() -> bool + 'a) {
+    create_effect(cx, move || {
+        if timer.get().is_finished() && op() {
+            timer.get().start();
+        }
+    });
+}
+
+fn hard_drop<P: PieceKind>(
+    field: &Signal<RefCell<DefaultField<P>>>,
+    bag: &Signal<RefCell<SingleBag<P>>>,
+    last_line_clear: &Signal<Option<LineClear<P>>>,
+) {
+    util::with_signal_mut_untracked(field, |field| {
+        util::with_signal_mut_silent_untracked(bag, |bag| last_line_clear.set(Some(field.hard_drop(bag))))
+    });
+    util::notify_subscribers(bag);
 }
 
 // a resettable timer that waits for a timeout and sets a flag upon completion
