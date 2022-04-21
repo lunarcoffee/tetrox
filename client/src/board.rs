@@ -68,31 +68,29 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
     macro_rules! loop_timer_shift_action {
         ($rows:expr, $cols:expr, $delay:expr) => {
             $delay.map(cx, |delay| {
-                RefCell::new(if *delay == 0 {
+                if *delay == 0 {
                     |field: &mut DefaultField<P>| while field.try_shift($rows, $cols) {}
                 } else {
                     |field: &mut DefaultField<P>| drop(field.try_shift($rows, $cols))
-                })
+                }
             })
         };
     }
-
-    type TimerAction<P> = RefCell<impl FnMut(&mut DefaultField<P>) + Copy + Clone>;
 
     let left_action = loop_timer_shift_action!(0, -1, arr);
     let right_action = loop_timer_shift_action!(0, 1, arr);
     let soft_drop_action = loop_timer_shift_action!(1, 0, sdr);
 
     // timer loop executing an action on an interval
-    let loop_timer = |duration: &'a ReadSignal<u32>, input, action: &'a ReadSignal<TimerAction<P>>| {
+    let loop_timer = |delay: &'a ReadSignal<u32>, input, action: &'a ReadSignal<fn(&mut DefaultField<P>)>| {
         // derive timer from looping interval
-        let timer = duration.map(cx, move |d| Timer::new(cx, *d));
+        let timer = delay.map(cx, move |d| Timer::new(cx, *d));
 
         create_timer_finish_effect(cx, timer, move || {
             let state = inputs.get_untracked().borrow().get_state(&input);
             if state.is_held() {
                 if state.is_pressed() {
-                    util::with_signal_mut_untracked(field_signal, |field| action.get().borrow_mut()(field));
+                    util::with_signal_mut_untracked(field_signal, |field| action.get()(field));
                 }
             }
             state.is_held() // continue the timer loop if the input is held (pressed or suppressed)
@@ -102,15 +100,15 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
     };
 
     // timer loop executing an action on an interval after an initial buffer timeout
-    let buffered_loop_timer = |durations: &'a ReadSignal<(_, _)>, input, action: &'a ReadSignal<TimerAction<P>>| {
+    let buffered_loop_timer = |delays: &'a ReadSignal<_>, input, action: &'a ReadSignal<fn(&mut DefaultField<P>)>| {
         // derive timers from buffer and loop durations
-        let buffer_timer = durations.map(cx, move |d| Timer::new(cx, d.0));
-        let loop_timer = loop_timer(durations.map(cx, |d| d.1), input, action);
+        let buffer_timer = delays.map(cx, move |(b, _)| Timer::new(cx, *b));
+        let loop_timer = loop_timer(delays.map(cx, |d| d.1), input, action);
 
         create_timer_finish_effect(cx, buffer_timer, move || {
             // apply the action if the input is still held down
             if inputs.get_untracked().borrow().get_state(&input).is_pressed() {
-                util::with_signal_mut_untracked(field_signal, |field| action.get().borrow_mut()(field));
+                util::with_signal_mut_untracked(field_signal, |field| action.get()(field));
             }
             loop_timer.get().start(); // activate the loop timer
             false
@@ -210,7 +208,7 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
     // gravity
     create_timer_finish_effect(cx, gravity_timer, || {
         if config.get_untracked().borrow().gravity_enabled {
-            util::with_signal_mut_untracked(field_signal, |field| gravity_action.get().borrow_mut()(field));
+            util::with_signal_mut_untracked(field_signal, |field| gravity_action.get()(field));
         }
         true
     });
