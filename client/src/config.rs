@@ -1,15 +1,369 @@
-use std::fmt;
-use std::ops::Deref;
+use std::{
+    cell::RefCell,
+    fmt::{self, Display},
+    str::FromStr,
+};
 
-use crate::board::{Board, Keybind};
+use crate::{game::Game, util};
+
 use bimap::BiMap;
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
-use wasm_bindgen::JsCast;
-use web_sys::{HtmlInputElement, HtmlSelectElement, InputEvent, KeyboardEvent, Storage};
-use yew::{html, Callback, Component, Context, Html};
+use sycamore::{
+    component,
+    generic_node::Html,
+    prelude::{create_effect, create_signal, provide_context_ref, Keyed, ReadSignal, Scope, Signal},
+    view,
+    view::View,
+    Prop,
+};
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash, EnumIter, Serialize, Deserialize)]
+use wasm_bindgen::JsCast;
+use web_sys::{Event, HtmlInputElement, HtmlSelectElement, KeyboardEvent, Storage};
+
+const CONFIG_LOCAL_STORAGE_KEY: &str = "config";
+
+#[component]
+pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
+    let c = Config::from_local_storage(get_local_storage()).unwrap_or_else(|| Config::default());
+
+    // separate signal for values required by canvas drawing because if both the canvas and the drawer directly used
+    // the config, sometimes the view's tracked signals would update after the canvas drawer effect's, leading the
+    // drawer to use an invalid `NodeRef`
+    let field_values = FieldValues::new(c.field_width, c.field_height, c.field_hidden, c.queue_len);
+    let field_values = create_signal(cx, field_values);
+    provide_context_ref(cx, field_values.map(cx, |d| d.clone()));
+
+    let config = create_signal(cx, RefCell::new(c));
+    provide_context_ref(cx, config);
+
+    // store the config on changes
+    create_effect(cx, move || {
+        let json = serde_json::to_string(&*config.get()).unwrap();
+        get_local_storage().set_item(CONFIG_LOCAL_STORAGE_KEY, &json).unwrap();
+    });
+
+    let updater = move |msg| {
+        // see comment on `field_values` above
+        match msg {
+            // these are the only messages that would require a canvas update
+            ConfigMsg::FieldWidth(width) => field_values.modify().width = width,
+            ConfigMsg::FieldHidden(hidden) => {
+                field_values.modify().height = hidden * 2;
+                field_values.modify().hidden = hidden;
+            }
+            ConfigMsg::QueueLen(queue_len) => field_values.modify().queue_len = queue_len,
+            _ => {}
+        }
+
+        // untracked so this isn't called on every config update
+        util::with_signal_mut_untracked(config, |config| {
+            if let ConfigMsg::FieldHidden(hidden) = msg {
+                config.field_height = hidden * 2;
+                config.field_hidden = hidden;
+            }
+
+            // match statement for updating each config value given its message
+            macro_rules! gen_config_setter_match {
+                ($($fields:ident; $msgs:ident),+) => { match msg {
+                    $(ConfigMsg::$msgs(ref new_value) => config.$fields = new_value.clone(),)*
+                    _ => {}
+                } }
+            }
+            gen_config_setter_match! {
+                gravity_delay; GravityDelay, lock_delay; LockDelay, move_limit; MoveLimit, 
+                topping_out_enabled; ToppingOutEnabled, auto_lock_enabled; AutoLockEnabled, 
+                gravity_enabled; GravityEnabled, move_limit_enabled; MoveLimitEnabled, field_width; FieldWidth,
+                queue_len; QueueLen, skin_name; SkinName, field_zoom; FieldZoom, vertical_offset; VerticalOffset,
+                shadow_opacity; ShadowOpacity, keybinds; Keybinds, delayed_auto_shift; DelayedAutoShift,
+                auto_repeat_rate; AutoRepeatRate, soft_drop_rate; SoftDropRate
+            }
+        });
+    };
+
+    // make config value signals and effects which update the config when the value signal is changed
+    macro_rules! gen_config_signals {
+        ($($field:ident; $msg:ident),+) => { $(
+            let $field = create_signal(cx, config.get().borrow().$field.clone());
+            create_effect(cx, move || updater(ConfigMsg::$msg((*$field.get()).clone())));
+        )* }
+    }
+    gen_config_signals! {
+        gravity_delay; GravityDelay, lock_delay; LockDelay, move_limit; MoveLimit,
+        topping_out_enabled; ToppingOutEnabled, auto_lock_enabled; AutoLockEnabled, gravity_enabled; GravityEnabled,
+        move_limit_enabled; MoveLimitEnabled, field_width; FieldWidth, field_hidden; FieldHidden, queue_len; QueueLen,
+        skin_name; SkinName, field_zoom; FieldZoom, vertical_offset; VerticalOffset, shadow_opacity; ShadowOpacity,
+        keybinds; Keybinds, delayed_auto_shift; DelayedAutoShift, auto_repeat_rate; AutoRepeatRate,
+        soft_drop_rate; SoftDropRate
+    };
+
+    let skin_name_items = crate::SKIN_NAMES.iter().map(|n| (*n, n.to_string())).collect();
+
+    macro_rules! keybind_capture_buttons {
+        ($($label:expr; $input:ident),*) => { view! { cx, 
+            div(class="config-button-box") {
+                $(InputCaptureButton { label: $label, input: Input::$input, keybinds })*
+            }
+        } }
+    }
+
+    view! { cx,
+        div(class="content") {
+            Game {}
+            div(class="config-panel") {
+                SectionHeading("Gameplay")
+                RangeInput { label: "Gravity delay", min: 0, max: 5_000, step: 5, value: gravity_delay }
+                RangeInput { label: "Lock delay", min: 10, max: 3_000, step: 5, value: lock_delay }
+                RangeInput { label: "Move limit", min: 1, max: 100, step: 1, value: move_limit }
+                div(class="config-button-box") {
+                    ToggleButton { label: "Topping out", value: topping_out_enabled }
+                    ToggleButton { label: "Lock delay", value: auto_lock_enabled }
+                    ToggleButton { label: "Gravity", value: gravity_enabled }
+                    ToggleButton { label: "Move limit", value: move_limit_enabled }
+                }
+
+                SectionHeading("Board")
+                RangeInput { label: "Field width", min: 4, max: 100, step: 1, value: field_width }
+                RangeInput { label: "Field height", min: 3, max: 100, step: 1, value: field_hidden }
+                RangeInput { label: "Queue length", min: 0, max: 7, step: 1, value: queue_len }
+
+                SectionHeading("Visual")
+                SelectInput { label: "Block skin", items: skin_name_items, value: skin_name }
+                RangeInput { label: "Field zoom", min: 0.1, max: 4.0, step: 0.05, value: field_zoom }
+                RangeInput { label: "Vertical offset", min: -2_000, max: 2_000, step: 10, value: vertical_offset }
+                RangeInput { label: "Shadow opacity", min: 0.0, max: 1.0, step: 0.05, value: shadow_opacity }
+
+                SectionHeading("Keybinds")
+                (keybind_capture_buttons! {
+                    "Left"; Left, "Right"; Right, "Soft drop"; SoftDrop, "Hard drop"; HardDrop,
+                    "Rotate CW"; RotateCw, "Rotate CCW"; RotateCcw, "Rotate 180"; Rotate180, "Swap hold"; SwapHold,
+                    "Reset"; Reset, "Show/hide UI"; ShowHideUi
+                })
+
+                SectionHeading("Handling")
+                RangeInput { label: "DAS", min: 0, max: 500, step: 1, value: delayed_auto_shift }
+                RangeInput { label: "ARR", min: 0, max: 500, step: 1, value: auto_repeat_rate }
+                RangeInput { label: "SDR", min: 0, max: 500, step: 1, value: soft_drop_rate }
+            }
+        }
+    }
+}
+
+fn get_local_storage() -> Storage { web_sys::window().unwrap().local_storage().unwrap().unwrap() }
+
+#[derive(Prop)]
+struct RangeInputProps<'a, T: Copy + Display + FromStr + 'static> {
+    label: &'static str,
+    min: T,
+    max: T,
+    step: T,
+    value: &'a Signal<T>,
+}
+
+#[component]
+fn RangeInput<'a, E, T, G>(cx: Scope<'a>, props: RangeInputProps<'a, T>) -> View<G>
+where
+    E: fmt::Debug,
+    T: Copy + Display + FromStr<Err = E> + 'static,
+    G: Html,
+{
+    let RangeInputProps {
+        label,
+        min,
+        max,
+        step,
+        value,
+    } = props;
+
+    view! { cx,
+        div(class="config-option") {
+            InputLabel { label, value }
+            input(
+                type="range",
+                min=min, max=max, step=step, value=value.to_string(),
+                on:input=|e: Event| {
+                    let elem = e.target().unwrap().dyn_into::<HtmlInputElement>();
+                    value.set(elem.unwrap().value().parse().unwrap());
+                },
+            )
+        }
+    }
+}
+
+#[derive(Prop)]
+struct SelectInputProps<'a, T: Clone + Display + PartialEq + Eq + 'static> {
+    label: &'static str,
+    items: Vec<(&'static str, T)>,
+    value: &'a Signal<T>,
+}
+
+#[component]
+fn SelectInput<'a, T, G>(cx: Scope<'a>, props: SelectInputProps<'a, T>) -> View<G>
+where
+    T: Clone + Display + PartialEq + Eq + 'static,
+    G: Html,
+{
+    let SelectInputProps { label, items, value } = props;
+    let items = create_signal(cx, items);
+
+    view! { cx,
+        div(class="config-option") {
+            InputLabel { label, value }
+            select(
+                on:input=|e: Event| {
+                    let new_label = e.target().unwrap().dyn_into::<HtmlSelectElement>().unwrap().value();
+                    value.set(items.get().iter().find(|i| i.0 == &new_label).unwrap().1.clone());
+                },
+            ) {
+                Keyed {
+                    iterable: items,
+                    view: move |cx, (label, item)| view! { cx,
+                        option(value=label, selected=*value.get() == item) { (label.to_string()) }
+                    },
+                    key: |item| item.0,
+                }
+            }
+        }
+    }
+}
+
+#[derive(Prop)]
+struct ToggleButtonProps<'a> {
+    label: &'static str,
+    value: &'a Signal<bool>,
+}
+
+// button that toggles a `bool`
+#[component]
+fn ToggleButton<'a, G: Html>(cx: Scope<'a>, props: ToggleButtonProps<'a>) -> View<G> {
+    let ToggleButtonProps { label, value } = props;
+    let label = value.map(cx, move |v| format!("{} ({})", label, if *v { "on" } else { "off" }));
+
+    view! { cx,
+        div(class="config-option") {
+            input(
+                type="button",
+                class=format!("config-toggle-button-{}", label),
+                value=label.get(),
+                on:click=|_| value.set(!*value.get()),
+            )
+        }
+    }
+}
+
+#[derive(Prop)]
+struct InputCaptureButtonProps<'a> {
+    label: &'static str,
+    input: Input,
+    keybinds: &'a Signal<Keybinds>,
+}
+
+// button that captures keyboard input when pressed (used for assigning keybinds)
+#[component]
+fn InputCaptureButton<'a, G: Html>(cx: Scope<'a>, props: InputCaptureButtonProps<'a>) -> View<G> {
+    let InputCaptureButtonProps { label, input, keybinds } = props;
+
+    let is_capturing_input = create_signal(cx, false); // currently capturing input?
+    let label = is_capturing_input.map(cx, move |i| {
+        let keybind = i.then(|| "<press a key>".to_string()).unwrap_or_else(|| {
+            keybinds
+                .get()
+                .get_by_left(&input)
+                .map(|keybind| match keybind.as_str() {
+                    " " => "Space",
+                    _ if keybind.starts_with("Arrow") => &keybind[5..],
+                    _ => keybind.as_str(),
+                })
+                .unwrap_or("<unset>")
+                .to_string()
+        });
+        format!("{} ({})", label, keybind)
+    });
+
+    view! { cx,
+        div(class="config-option") {
+            input(
+                type="button",
+                value=label.get(),
+                on:click=|_| is_capturing_input.set(!*is_capturing_input.get()),
+                on:keydown=move |e: Event| {
+                    e.prevent_default();
+                    let e = e.dyn_into::<KeyboardEvent>().unwrap();
+
+                    // only change binds if currently capturing and let escape cancel the action
+                    if *is_capturing_input.get() && !e.key().starts_with("Esc") {
+                        keybinds.modify().insert(input, e.key());
+                    }
+                    is_capturing_input.set(false);
+                },
+            )
+        }
+    }
+}
+
+#[component]
+fn SectionHeading<'a, G: Html>(cx: Scope<'a>, section: &'static str) -> View<G> {
+    view! { cx, p(class="config-heading") { (section.to_uppercase()) } }
+}
+
+#[derive(Prop)]
+struct InputLabelProps<'a, T: Display + 'static> {
+    label: &'static str,
+    value: &'a ReadSignal<T>,
+}
+
+#[component]
+fn InputLabel<'a, G: Html, T: Display + 'static>(cx: Scope<'a>, props: InputLabelProps<'a, T>) -> View<G> {
+    view! { cx, p(class="config-option-label") { (props.label) " (" (props.value.get()) "):" } }
+}
+
+#[derive(Clone)]
+pub struct FieldValues {
+    pub width: usize,
+    pub height: usize,
+    pub hidden: usize,
+    pub queue_len: usize,
+}
+
+impl FieldValues {
+    pub fn new(width: usize, height: usize, hidden: usize, queue_len: usize) -> Self {
+        FieldValues {
+            width,
+            height,
+            hidden,
+            queue_len,
+        }
+    }
+}
+
+enum ConfigMsg {
+    GravityDelay(u32),
+    LockDelay(u32),
+    MoveLimit(usize),
+    ToppingOutEnabled(bool),
+    AutoLockEnabled(bool),
+    GravityEnabled(bool),
+    MoveLimitEnabled(bool),
+
+    FieldWidth(usize),
+    FieldHidden(usize),
+    QueueLen(usize),
+
+    SkinName(String),
+    FieldZoom(f64),
+    VerticalOffset(i32),
+    ShadowOpacity(f64),
+
+    Keybinds(Keybinds),
+
+    DelayedAutoShift(u32),
+    AutoRepeatRate(u32),
+    SoftDropRate(u32),
+
+    _ToggleUi,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, EnumIter)]
 pub enum Input {
     Left,
     Right,
@@ -18,25 +372,15 @@ pub enum Input {
     RotateCw,
     RotateCcw,
     Rotate180,
-    SwapHoldPiece,
+    SwapHold,
     Reset,
     ShowHideUi,
 }
 
-#[derive(PartialEq, Clone, Serialize, Deserialize)]
+pub type Keybinds = BiMap<Input, String>;
+
+#[derive(Serialize, Deserialize)]
 pub struct Config {
-    // visual settings
-    pub skin_name: String,
-    pub field_zoom: f64,
-    pub vertical_offset: i32,
-    pub shadow_opacity: f64,
-
-    // field property settings
-    pub field_width: usize,
-    pub field_height: usize,
-    pub field_hidden: usize,
-    pub queue_len: usize,
-
     // gameplay
     pub gravity_delay: u32,
     pub lock_delay: u32,
@@ -46,16 +390,26 @@ pub struct Config {
     pub gravity_enabled: bool,
     pub move_limit_enabled: bool,
 
+    // field property settings
+    pub field_width: usize,
+    pub field_height: usize,
+    pub field_hidden: usize,
+    pub queue_len: usize,
+
+    // visual settings
+    pub skin_name: String,
+    pub field_zoom: f64,
+    pub vertical_offset: i32,
+    pub shadow_opacity: f64,
+
     // controls
-    pub inputs: BiMap<Input, Keybind>,
+    pub keybinds: Keybinds,
 
     // handling
     pub delayed_auto_shift: u32,
     pub auto_repeat_rate: u32,
     pub soft_drop_rate: u32,
 }
-
-const CONFIG_LOCAL_STORAGE_KEY: &str = "config";
 
 impl Config {
     fn from_local_storage(storage: Storage) -> Option<Self> {
@@ -75,18 +429,15 @@ impl Default for Config {
             (Input::RotateCw, "x"),
             (Input::RotateCcw, "z"),
             (Input::Rotate180, "Shift"),
-            (Input::SwapHoldPiece, "c"),
+            (Input::SwapHold, "c"),
             (Input::Reset, "`"),
             (Input::ShowHideUi, "F9"),
-        ]
-        .into_iter()
-        .map(|(i, k)| (i, k.to_string()))
-        .collect();
+        ];
 
         Config {
             skin_name: "tetrox".to_string(),
             field_zoom: 1.0,
-            vertical_offset: 70,
+            vertical_offset: 170,
             shadow_opacity: 0.3,
 
             field_width: 10,
@@ -102,319 +453,11 @@ impl Default for Config {
             gravity_enabled: true,
             move_limit_enabled: true,
 
+            keybinds: inputs.into_iter().map(|(i, k)| (i, k.to_string())).collect(),
+
             delayed_auto_shift: 280,
             auto_repeat_rate: 50,
             soft_drop_rate: 30,
-
-            inputs,
-        }
-    }
-}
-
-#[derive(PartialEq, Clone)]
-pub struct ReadOnlyConfig(Config);
-
-impl Deref for ReadOnlyConfig {
-    type Target = Config;
-
-    fn deref(&self) -> &Self::Target { &self.0 }
-}
-
-pub enum ConfigMessage {
-    SkinName(String),
-    FieldZoom(f64),
-    VerticalOffset(i32),
-    ShadowOpacity(f64),
-
-    FieldWidth(usize),
-    FieldHeight(usize),
-    QueueLen(usize),
-
-    GravityDelay(u32),
-    LockDelay(u32),
-    MoveLimit(usize),
-    ToggleToppingOut,
-    ToggleAutoLock,
-    ToggleGravity,
-    ToggleMoveLimit,
-
-    DelayedAutoShift(u32),
-    AutoRepeatRate(u32),
-    SoftDropRate(u32),
-
-    StartRebindInput(Input),
-    CancelRebindInput,
-    RebindInput(String),
-
-    ResetToDefault,
-    ToggleUi,
-}
-
-// config panel which wraps a `Board` component
-pub struct ConfigPanelWrapper {
-    config: Config,
-
-    ui_enabled: bool,
-    capturing_input: Option<Input>, // `Some` when capturing a new keybind
-}
-
-impl ConfigPanelWrapper {
-    fn section_heading(name: &str) -> Html {
-        html! { <p class="config-heading">{ name }</p> }
-    }
-
-    fn range_input<T>(label: &str, min: T, max: T, step: T, value: T, callback: Callback<InputEvent>) -> Html
-    where
-        T: fmt::Display,
-    {
-        html! {
-            <div class="config-option">
-                { Self::input_label(label, &value) }
-                <input type="range" min={ min.to_string() } max={ max.to_string() } step={ step.to_string() }
-                       value={ value.to_string() }
-                       oninput={ callback }/>
-            </div>
-        }
-    }
-
-    fn select_input(label: &str, items: &[&'static str], selected: &str, callback: Callback<InputEvent>) -> Html {
-        html! {
-            <div class="config-option">
-                { Self::input_label(label, &selected) }
-                <select oninput={ callback }>{
-                    for items.iter().map(|i| {
-                        html! { <option value={ *i } selected={ selected == *i }>{ i }</option> }
-                    })
-                }</select>
-            </div>
-        }
-    }
-
-    fn input_label(label: &str, value: &impl fmt::Display) -> Html {
-        html! { <p class="config-option-label">{ format!("{} ({}):", label, value) }</p> }
-    }
-
-    // button that reads a new keybind for the given input
-    fn button_capture_input(&self, ctx: &Context<Self>, label: &str, input: Input) -> Html {
-        let keybind = self
-            .config
-            .inputs
-            .get_by_left(&input)
-            .map(|k| match self.capturing_input.as_ref() {
-                Some(rebinding_input) if input == *rebinding_input => "<press a key>",
-                _ => match k.as_str() {
-                    " " => "Space",
-                    _ if k.starts_with("Arrow") => &k[5..],
-                    _ => k.as_str(),
-                },
-            })
-            .unwrap_or("<unset>");
-
-        let label = format!("{} ({})", label, keybind);
-        let start_callback = ctx.link().callback(move |_| ConfigMessage::StartRebindInput(input));
-        let rebind_callback = ctx.link().callback(move |e: KeyboardEvent| {
-            let key = e.key();
-            if key.starts_with("Esc") {
-                ConfigMessage::CancelRebindInput
-            } else {
-                // `BiMap` automatically overrides duplicate binds
-                ConfigMessage::RebindInput(e.key())
-            }
-        });
-
-        html! {
-            <div class="config-option">
-                <input type="button" value={ label } onclick={ start_callback } onkeydown={ rebind_callback }/>
-            </div>
-        }
-    }
-
-    fn toggle_input(ctx: &Context<Self>, label: &str, value: bool, msg: ConfigMessage) -> Html {
-        let value_on_off = if value { "on" } else { "off" };
-        let label = format!("{} ({})", label, value_on_off);
-        let toggle_callback = ctx.link().callback_once(move |_| msg);
-
-        html! {
-            <div class="config-option">
-                <input class={ format!("config-toggle-button-{}", value_on_off) }
-                       type="button"
-                       value={ label }
-                       onclick={ toggle_callback }/>
-            </div>
-        }
-    }
-
-    fn store_config(&self) {
-        let storage = web_sys::window().unwrap().local_storage().unwrap().unwrap();
-        let json = serde_json::to_string(&self.config).unwrap();
-        storage.set_item(CONFIG_LOCAL_STORAGE_KEY, &json).unwrap();
-    }
-}
-
-impl Component for ConfigPanelWrapper {
-    type Message = ConfigMessage;
-    type Properties = ();
-
-    fn create(_ctx: &Context<Self>) -> Self {
-        let storage = web_sys::window().unwrap().local_storage().unwrap().unwrap();
-
-        ConfigPanelWrapper {
-            config: Config::from_local_storage(storage).unwrap_or_else(|| Config::default()),
-
-            ui_enabled: true,
-            capturing_input: None,
-        }
-    }
-
-    fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
-        // indirect or non-config value updates
-        match msg {
-            ConfigMessage::ResetToDefault => self.config = Config::default(),
-            ConfigMessage::ToggleUi => self.ui_enabled ^= true,
-            _ => {}
-        }
-
-        // regular value updates
-        match msg {
-            ConfigMessage::SkinName(ref skin_name) => self.config.skin_name = skin_name.to_string(),
-            ConfigMessage::FieldZoom(zoom) => self.config.field_zoom = zoom,
-            ConfigMessage::VerticalOffset(offset) => self.config.vertical_offset = offset,
-            ConfigMessage::ShadowOpacity(opacity) => self.config.shadow_opacity = opacity,
-
-            ConfigMessage::FieldWidth(width) => self.config.field_width = width,
-            ConfigMessage::FieldHeight(height) => {
-                self.config.field_height = height * 2;
-                self.config.field_hidden = height;
-            }
-            ConfigMessage::QueueLen(queue_len) => self.config.queue_len = queue_len,
-
-            ConfigMessage::GravityDelay(gravity) => self.config.gravity_delay = gravity,
-            ConfigMessage::LockDelay(lock_delay) => self.config.lock_delay = lock_delay,
-            ConfigMessage::MoveLimit(limit) => self.config.move_limit = limit,
-            ConfigMessage::ToggleToppingOut => self.config.topping_out_enabled ^= true,
-            ConfigMessage::ToggleAutoLock => self.config.auto_lock_enabled ^= true,
-            ConfigMessage::ToggleGravity => self.config.gravity_enabled ^= true,
-            ConfigMessage::ToggleMoveLimit => self.config.move_limit_enabled ^= true,
-
-            ConfigMessage::DelayedAutoShift(das) => self.config.delayed_auto_shift = das,
-            ConfigMessage::AutoRepeatRate(arr) => self.config.auto_repeat_rate = arr,
-            ConfigMessage::SoftDropRate(sdr) => self.config.soft_drop_rate = sdr,
-            _ => {}
-        }
-
-        // input keybind updates
-        match msg {
-            ConfigMessage::StartRebindInput(input) => self.capturing_input = Some(input),
-            ConfigMessage::CancelRebindInput => self.capturing_input = None,
-            ConfigMessage::RebindInput(keybind) => {
-                if let Some(input) = self.capturing_input {
-                    self.config.inputs.insert(input, keybind);
-                    self.capturing_input = None;
-                }
-            }
-            _ => {}
-        }
-
-        self.store_config();
-        true
-    }
-
-    fn view(&self, ctx: &Context<Self>) -> Html {
-        macro_rules! make_update_callback {
-            ($type:ty, $msg:expr) => {
-                ctx.link().batch_callback(move |e: InputEvent| {
-                    let input = e.target().unwrap().dyn_into::<$type>();
-                    input.unwrap().value().parse().ok().map(|v| $msg(v))
-                })
-            };
-        }
-
-        let show_hide_keybind = self.config.inputs.get_by_left(&Input::ShowHideUi);
-        let show_hide_keybind = show_hide_keybind.unwrap_or(&"".to_string()).to_string();
-        let show_hide_ui_cb = ctx
-            .link()
-            .batch_callback(move |e: KeyboardEvent| (show_hide_keybind == e.key()).then(|| ConfigMessage::ToggleUi));
-
-        // TODO: just pass the message into the input factory function?
-        let skin_name_cb = make_update_callback!(HtmlSelectElement, ConfigMessage::SkinName);
-        let field_zoom_cb = make_update_callback!(HtmlInputElement, ConfigMessage::FieldZoom);
-        let offset_cb = make_update_callback!(HtmlInputElement, ConfigMessage::VerticalOffset);
-        let shadow_cb = make_update_callback!(HtmlInputElement, ConfigMessage::ShadowOpacity);
-
-        let field_width_cb = make_update_callback!(HtmlInputElement, ConfigMessage::FieldWidth);
-        let field_height_cb = make_update_callback!(HtmlInputElement, ConfigMessage::FieldHeight);
-        let queue_len_cb = make_update_callback!(HtmlInputElement, ConfigMessage::QueueLen);
-
-        let gravity_cb = make_update_callback!(HtmlInputElement, ConfigMessage::GravityDelay);
-        let lock_delay_cb = make_update_callback!(HtmlInputElement, ConfigMessage::LockDelay);
-        let move_limit_cb = make_update_callback!(HtmlInputElement, ConfigMessage::MoveLimit);
-
-        let das_cb = make_update_callback!(HtmlInputElement, ConfigMessage::DelayedAutoShift);
-        let arr_cb = make_update_callback!(HtmlInputElement, ConfigMessage::AutoRepeatRate);
-        let sdr_cb = make_update_callback!(HtmlInputElement, ConfigMessage::SoftDropRate);
-
-        let reset_cb = ctx.link().callback(|_| ConfigMessage::ResetToDefault);
-
-        let config = &self.config;
-
-        html! {
-            <div class="content" onkeydown={ show_hide_ui_cb }>
-                // left/right darkening gradient
-                <div class="bg-gradient"></div>
-
-                <Board config={ ReadOnlyConfig(self.config.clone()) }/>
-                <div class={ format!("config-panel{}", if self.ui_enabled { "" } else { "-hidden" }) }>
-                    { Self::section_heading("Gameplay") }
-                    { Self::range_input("Gravity delay", 10, 5_000, 5, config.gravity_delay, gravity_cb) }
-                    { Self::range_input("Lock delay", 10, 3_000, 5, config.lock_delay, lock_delay_cb) }
-                    { Self::range_input("Move limit", 1, 200, 1, config.move_limit, move_limit_cb) }
-                    <div class="config-button-box">
-                        { Self::toggle_input(ctx, "Topping out", config.topping_out_enabled, ConfigMessage::ToggleToppingOut) }
-                        { Self::toggle_input(ctx, "Lock delay", config.auto_lock_enabled, ConfigMessage::ToggleAutoLock) }
-                        { Self::toggle_input(ctx, "Gravity", config.gravity_enabled, ConfigMessage::ToggleGravity) }
-                        { Self::toggle_input(ctx, "Move limit", config.move_limit_enabled, ConfigMessage::ToggleMoveLimit) }
-                    </div>
-
-                    { Self::section_heading("Playfield") }
-                    { Self::range_input("Field width", 4, 100, 1, config.field_width, field_width_cb) }
-                    { Self::range_input("Field height", 3, 100, 1, config.field_height / 2, field_height_cb) }
-                    { Self::range_input("Queue length", 0, 7, 1, config.queue_len, queue_len_cb) }
-
-                    { Self::section_heading("Appearance") }
-                    { Self::select_input("Block skin", crate::SKIN_NAMES, &config.skin_name, skin_name_cb) }
-                    { Self::range_input("Field zoom", 0.1, 4.0, 0.05, config.field_zoom, field_zoom_cb) }
-                    { Self::range_input("Vertical offset", -2_000, 2_000, 10, config.vertical_offset, offset_cb) }
-                    { Self::range_input("Ghost piece opacity", 0.0, 1.0, 0.05, config.shadow_opacity, shadow_cb) }
-
-                    { Self::section_heading("Keybinds") }
-                    <div class="config-button-box">
-                        { self.button_capture_input(ctx, "Left", Input::Left) }
-                        { self.button_capture_input(ctx, "Right", Input::Right) }
-                        { self.button_capture_input(ctx, "Soft drop", Input::SoftDrop) }
-                        { self.button_capture_input(ctx, "Hard drop", Input::HardDrop) }
-                        { self.button_capture_input(ctx, "Rotate CW", Input::RotateCw) }
-                        { self.button_capture_input(ctx, "Rotate CCW", Input::RotateCcw) }
-                        { self.button_capture_input(ctx, "Rotate 180", Input::Rotate180) }
-                        { self.button_capture_input(ctx, "Swap hold", Input::SwapHoldPiece) }
-                        { self.button_capture_input(ctx, "Reset", Input::Reset) }
-                        { self.button_capture_input(ctx, "Show/hide UI", Input::ShowHideUi) }
-                    </div>
-
-                    { Self::section_heading("Handling") }
-                    { Self::range_input("DAS", 0, 500, 1, config.delayed_auto_shift, das_cb) }
-                    { Self::range_input("ARR", 0, 500, 1, config.auto_repeat_rate, arr_cb) }
-                    { Self::range_input("SDR", 0, 500, 1, config.soft_drop_rate, sdr_cb) }
-
-                    { Self::section_heading("Misc") }
-                    <p class="config-option-label">{ "tetrox by lunarcoffee" }</p>
-                    <a class="config-option-label link"  href="https://github.com/lunarcoffee/tetrox" target="_blank">
-                        { "github" }
-                    </a>
-                    <div class="config-option" style="margin: 10px 0 6px 0;">
-                        <input class="config-reset-button" type="button" value={ "Reset to default" } onclick={ reset_cb }/>
-                    </div>
-                </div>
-            </div>
         }
     }
 }

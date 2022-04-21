@@ -1,13 +1,16 @@
 #![feature(array_chunks)]
+#![feature(min_specialization)]
+#![feature(type_alias_impl_trait)]
 
 pub mod field;
 pub mod tetromino;
 
-use std::ops;
+use std::{mem, ops};
 
 use field::DefaultField;
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
+use rand::prelude::SliceRandom;
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
 pub struct Coords(pub i32, pub i32);
@@ -81,6 +84,44 @@ pub trait Bag<P: PieceKind> {
     fn lookahead(&self) -> usize;
 }
 
+pub struct SingleBag<P: PieceKind> {
+    bag: Vec<P>,
+}
+
+impl<P: PieceKind> SingleBag<P> {
+    pub fn new() -> Self {
+        let mut bag = SingleBag { bag: vec![] };
+        bag.update_bag();
+        bag.update_bag();
+        bag
+    }
+
+    fn update_bag(&mut self) {
+        if self.bag.len() <= P::n_kinds() {
+            let mut next_bag = P::iter().collect::<Vec<_>>();
+            next_bag.shuffle(&mut rand::thread_rng());
+
+            // prepend to preserve peek order
+            mem::swap(&mut self.bag, &mut next_bag);
+            self.bag.extend(next_bag);
+        }
+    }
+}
+
+impl<P: PieceKind> Bag<P> for SingleBag<P> {
+    fn next(&mut self) -> P {
+        self.update_bag();
+        self.bag.pop().unwrap()
+    }
+
+    fn peek(&mut self) -> Box<dyn Iterator<Item = &P> + '_> {
+        self.update_bag();
+        Box::new(self.bag.iter().rev())
+    }
+
+    fn lookahead(&self) -> usize { P::n_kinds() }
+}
+
 #[derive(Clone, Copy, FromPrimitive, ToPrimitive)]
 pub enum RotationState {
     Initial,
@@ -100,6 +141,6 @@ pub trait KickTable<P: PieceKind> {
     fn rotate_ccw(&self, piece: P, rotation_state: RotationState) -> Vec<Coords>;
 }
 
-pub trait KickTable180<P: PieceKind>: KickTable<P> {
+pub trait KickTable180<P: PieceKind> {
     fn rotate_180(&self, piece: P, rotation_state: RotationState) -> Vec<Coords>;
 }

@@ -1,383 +1,419 @@
-use std::cell::RefCell;
-use std::collections::HashSet;
-use std::rc::Rc;
-
-use crate::animation::{Animation, AnimationState};
-use crate::canvas::CanvasRenderer;
-use crate::config::{Input, ReadOnlyConfig};
-use crate::game_stats::GameStatsDrawer;
-use crate::input::InputStates;
-use gloo_timers::callback::{Interval, Timeout};
-use tetrox::{
-    field::DefaultField,
-    tetromino::{SingleBag, SrsKickTable, SrsTetromino, Tetrio180KickTable},
+use crate::{
+    canvas::{self, Field, HoldPiece, NextQueue},
+    config::{Config, Input},
+    stats::Stats,
+    util,
 };
-use web_sys::HtmlElement;
-use yew::{html, Component, Context, Html, KeyboardEvent, NodeRef, Properties};
 
-#[derive(PartialEq, Properties)]
-pub struct BoardProps {
-    pub config: ReadOnlyConfig,
-}
+use std::{cell::RefCell, collections::HashMap, mem};
 
-pub enum BoardMessage {
-    KeyPressed(KeyboardEvent),
-    KeyReleased(KeyboardEvent),
+use gloo_timers::callback::Timeout;
+use strum::IntoEnumIterator;
+use sycamore::{
+    component,
+    generic_node::Html,
+    prelude::{
+        create_effect, create_selector, create_signal, provide_context, provide_context_ref, use_context,
+        use_scope_status, ReadSignal, Scope, Signal,
+    },
+    view,
+    view::View,
+};
+use tetrox::{
+    field::{DefaultField, LineClear},
+    tetromino::{SrsKickTable, SrsTetromino, TetrIo180KickTable},
+    PieceKind, SingleBag,
+};
+use wasm_bindgen::JsCast;
+use web_sys::{Event, HtmlImageElement, KeyboardEvent};
 
-    MoveLeft,
-    MoveRight,
-    MoveDown,
+#[component]
+pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
+    let config = use_context::<Signal<RefCell<Config>>>(cx);
+    let c = config.get();
+    let c = c.borrow();
 
-    // repeating movement messages
-    MoveLeftAutoRepeat,
-    MoveRightAutoRepeat,
-    DasLeft,
-    DasRight,
-    ProjectDown,
+    let mut bag = SingleBag::<P>::new();
+    let field = DefaultField::new(c.field_width, c.field_height, c.field_hidden, &mut bag);
+    let field_signal = create_signal(cx, RefCell::new(field));
+    provide_context_ref(cx, field_signal);
 
-    RotateCw,
-    RotateCcw,
-    Rotate180,
+    // prop for next queue
+    let bag = create_signal(cx, RefCell::new(bag));
 
-    SwapHoldPiece,
-    HardDrop,
-    GravityDrop,
-    LockDelayDrop,
+    // update field on field dimension config option updates
+    let field_dims = util::create_config_selector(cx, config, |c| (c.field_width, c.field_height, c.field_hidden));
+    create_effect(cx, || {
+        let (width, height, hidden) = *field_dims.get();
+        let new_field = util::with_signal_mut_untracked(bag, |bag| DefaultField::new(width, height, hidden, bag));
+        field_signal.set(RefCell::new(new_field));
+    });
 
-    TickAnimation(Animation),
-    StopAnimation(Animation),
+    // used in canvas drawing
+    provide_context(cx, make_asset_cache());
 
-    Reset,
-}
+    // board css style config options
+    let style_values = util::create_config_selector(cx, config, |c| (c.field_zoom * 100.0, c.vertical_offset));
+    let game_style = style_values.map(cx, |d| format!("transform: scale({}%); margin-top: {}px;", d.0, d.1));
 
-pub struct BoardTimers {
-    gravity: Option<Interval>,
-    lock_delay: Option<Timeout>,
-    _animation_loop: Option<Interval>, // store so the loop is cancelled when this is dropped
+    // loop timer durations
+    let das_arr = util::create_config_selector(cx, config, |c| (c.delayed_auto_shift, c.auto_repeat_rate));
+    let arr = das_arr.map(cx, |d| d.1);
+    let sdr = util::create_config_selector(cx, config, |c| c.soft_drop_rate);
 
-    config: ReadOnlyConfig,
-}
+    let inputs = create_signal(cx, RefCell::new(InputStates::new()));
 
-impl BoardTimers {
-    fn new(ctx: &Context<Board>, animations: Rc<RefCell<HashSet<Animation>>>, config: ReadOnlyConfig) -> Self {
-        // tick each animation once every frame at about 60 fps
-        let link = ctx.link().clone();
-        let animation_loop = Some(Interval::new(17, move || {
-            // clone animations to avoid double borrow on animation stop
-            let active_animations = animations.borrow().iter().cloned().collect::<Vec<_>>();
-            for animation in active_animations {
-                link.send_message(BoardMessage::TickAnimation(animation));
+    // creates an action that moves the piece to be executed on every tick of a loop timer
+    // special action is given for a delay of zero
+    macro_rules! loop_timer_shift_action {
+        ($rows:expr, $cols:expr, $delay:expr) => {
+            $delay.map(cx, |delay| {
+                RefCell::new(if *delay == 0 {
+                    |field: &mut DefaultField<P>| while field.try_shift($rows, $cols) {}
+                } else {
+                    |field: &mut DefaultField<P>| drop(field.try_shift($rows, $cols))
+                })
+            })
+        };
+    }
+
+    type TimerAction<P> = RefCell<impl FnMut(&mut DefaultField<P>) + Copy + Clone>;
+
+    let left_action = loop_timer_shift_action!(0, -1, arr);
+    let right_action = loop_timer_shift_action!(0, 1, arr);
+    let soft_drop_action = loop_timer_shift_action!(1, 0, sdr);
+
+    // timer loop executing an action on an interval
+    let loop_timer = |duration: &'a ReadSignal<u32>, input, action: &'a ReadSignal<TimerAction<P>>| {
+        // derive timer from looping interval
+        let timer = duration.map(cx, move |d| Timer::new(cx, *d));
+
+        create_timer_finish_effect(cx, timer, move || {
+            let state = inputs.get_untracked().borrow().get_state(&input);
+            if state.is_held() {
+                if state.is_pressed() {
+                    util::with_signal_mut_untracked(field_signal, |field| action.get().borrow_mut()(field));
+                }
             }
-        }));
+            state.is_held() // continue the timer loop if the input is held (pressed or suppressed)
+        });
 
-        BoardTimers {
-            gravity: None,
-            lock_delay: None,
-            _animation_loop: animation_loop,
+        timer
+    };
 
-            config,
-        }
-    }
+    // timer loop executing an action on an interval after an initial buffer timeout
+    let buffered_loop_timer = |durations: &'a ReadSignal<(_, _)>, input, action: &'a ReadSignal<TimerAction<P>>| {
+        // derive timers from buffer and loop durations
+        let buffer_timer = durations.map(cx, move |d| Timer::new(cx, d.0));
+        let loop_timer = loop_timer(durations.map(cx, |d| d.1), input, action);
 
-    fn reset_gravity(&mut self, ctx: &Context<Board>) {
-        let link = ctx.link().clone();
-        if self.config.gravity_enabled {
-            self.gravity = Some(Interval::new(self.config.gravity_delay, move || {
-                link.send_message(BoardMessage::GravityDrop);
-            }));
-        }
-    }
+        create_timer_finish_effect(cx, buffer_timer, move || {
+            // apply the action if the input is still held down
+            if inputs.get_untracked().borrow().get_state(&input).is_pressed() {
+                util::with_signal_mut_untracked(field_signal, |field| action.get().borrow_mut()(field));
+            }
+            loop_timer.get().start(); // activate the loop timer
+            false
+        });
 
-    fn reset_lock_delay(&mut self, ctx: &Context<Board>) {
-        let link = ctx.link().clone();
-        self.lock_delay = Some(Timeout::new(self.config.lock_delay, move || {
-            link.send_message(BoardMessage::LockDelayDrop);
-        }));
-    }
+        buffer_timer
+    };
 
-    fn cancel_lock_delay(&mut self) { self.lock_delay.take().map(|timer| timer.cancel()); }
-}
+    // looping input timers
+    let left_timer = buffered_loop_timer(das_arr, Input::Left, left_action);
+    let right_timer = buffered_loop_timer(das_arr, Input::Right, right_action);
+    let soft_drop_timer = loop_timer(sdr, Input::SoftDrop, soft_drop_action);
 
-pub struct Board {
-    bag: SingleBag<SrsTetromino>,
-    field: DefaultField<SrsTetromino>,
-    input_states: InputStates,
+    // previous line clear type (used for stats)
+    let last_line_clear = create_signal(cx, None::<LineClear<P>>);
 
-    canvas_renderer: CanvasRenderer,
-    game_stats: GameStatsDrawer,
+    let keydown_handler = |e: Event| {
+        let e = e.dyn_into::<KeyboardEvent>().unwrap();
+        let c = config.get();
+        let c = c.borrow();
 
-    timers: BoardTimers,
-    prev_lock_delay_actions: usize,
-    animation_state: AnimationState,
+        c.keybinds.get_by_right(&e.key()).map(|input| {
+            // don't do anything if the input was already pressed
+            // these presses come from the operating system repeating inputs automatically
+            if util::with_signal_mut(inputs, |inputs| inputs.set_pressed(input)).is_pressed() {
+                return;
+            }
 
-    game_div: NodeRef, // used to set focus after rendering
+            util::with_signal_mut(field_signal, |field| {
+                // shift the current piece and activate a loop timer to handle a held input
+                let mut shift_and_start_timer = |rows, cols, timer: &ReadSignal<Timer>| {
+                    field.try_shift(rows, cols);
+                    timer.get().start();
+                };
 
-    config: ReadOnlyConfig,
-}
-
-pub type Keybind = String;
-
-impl Board {
-    fn process_key_press(&mut self, ctx: &Context<Self>, e: &KeyboardEvent) -> bool {
-        let inputs = &mut self.input_states;
-        self.config
-            .inputs
-            .get_by_right(&e.key())
-            .map(|input| {
                 match input {
-                    Input::Left => inputs.left_pressed(ctx),
-                    Input::Right => inputs.right_pressed(ctx),
-                    Input::SoftDrop => inputs.soft_drop_pressed(ctx),
-                    Input::RotateCw => inputs.set_pressed_msg(Input::RotateCw, ctx, BoardMessage::RotateCw),
-                    Input::RotateCcw => inputs.set_pressed_msg(Input::RotateCcw, ctx, BoardMessage::RotateCcw),
-                    Input::Rotate180 => inputs.set_pressed_msg(Input::Rotate180, ctx, BoardMessage::Rotate180),
-                    Input::SwapHoldPiece => ctx.link().send_message(BoardMessage::SwapHoldPiece),
-                    Input::HardDrop => inputs.set_pressed_msg(Input::HardDrop, ctx, BoardMessage::HardDrop),
-                    Input::Reset => ctx.link().send_message(BoardMessage::Reset),
+                    Input::Left => shift_and_start_timer(0, -1, left_timer),
+                    Input::Right => shift_and_start_timer(0, 1, right_timer),
+                    Input::SoftDrop => shift_and_start_timer(1, 0, soft_drop_timer),
+                    Input::RotateCw => drop(field.try_rotate_cw(&SrsKickTable)),
+                    Input::RotateCcw => drop(field.try_rotate_ccw(&SrsKickTable)),
+                    Input::Rotate180 => drop(field.try_rotate_180(&TetrIo180KickTable)),
+                    Input::SwapHold => util::with_signal_mut_silent(bag, |bag| field.swap_hold_piece(bag)),
                     _ => {}
                 }
-                true
-            })
-            .unwrap_or(false)
-    }
+            });
 
-    fn process_key_release(&mut self, e: &KeyboardEvent) -> bool {
-        self.config
-            .inputs
-            .get_by_right(&e.key())
-            .map(|input| self.input_states.set_released(*input));
+            match input {
+                // handle game resetting separately as `with_signal_mut` will replace the new field with the old one
+                // after the closure executes
+                Input::Reset => {
+                    let mut new_bag = SingleBag::new();
+                    let field = DefaultField::new(c.field_width, c.field_height, c.field_hidden, &mut new_bag);
+
+                    field_signal.set(RefCell::new(field));
+                    bag.set(RefCell::new(new_bag));
+                    inputs.set(RefCell::new(InputStates::new()));
+                }
+                Input::HardDrop => hard_drop(field_signal, bag, last_line_clear),
+                _ => {}
+            }
+
+            // only notify bag subscribers after the field is updated
+            // certain field updates (e.g. hard drop) also update the bag, which updates the next queue, which
+            // requires a reference to the field (but `with_signal_mut` already has an exclusive reference)
+            util::notify_subscribers(bag);
+        });
+    };
+
+    let keyup_handler = |e: Event| {
+        let e = e.dyn_into::<KeyboardEvent>().unwrap();
+        let c = config.get();
+        let c = c.borrow();
+
+        c.keybinds.get_by_right(&e.key()).map(|input| {
+            util::with_signal_mut(inputs, |inputs| inputs.set_released(input));
+
+            // cancel timers on release
+            // this means pressing the input again before the buffer timer completes will not cause the action to run
+            match input {
+                Input::Left => left_timer.get().stop(),
+                Input::Right => right_timer.get().stop(),
+                Input::SoftDrop => soft_drop_timer.get().stop(),
+                _ => {}
+            }
+        });
+    };
+
+    let gravity_delay = util::create_config_selector(cx, config, |c| c.gravity_delay);
+    let gravity_action = loop_timer_shift_action!(1, 0, gravity_delay);
+    let gravity_timer = gravity_delay.map(cx, move |d| {
+        let timer = Timer::new(cx, *d);
+        timer.start();
+        timer
+    });
+
+    // gravity
+    create_timer_finish_effect(cx, gravity_timer, || {
+        if config.get_untracked().borrow().gravity_enabled {
+            util::with_signal_mut_untracked(field_signal, |field| gravity_action.get().borrow_mut()(field));
+        }
+        true
+    });
+
+    let move_limit = util::create_config_selector(cx, config, |c| c.move_limit);
+    let actions_since_lock_delay = create_selector(cx, || {
+        field_signal.get().borrow().actions_since_lock_delay().unwrap_or(0)
+    });
+
+    // action limit (after piece touches stack)
+    create_effect(cx, || {
+        let limit_reached = actions_since_lock_delay.get() == move_limit.get_untracked();
+        if config.get_untracked().borrow().move_limit_enabled && limit_reached {
+            hard_drop(field_signal, bag, last_line_clear);
+        }
+    });
+
+    let lock_delay = util::create_config_selector(cx, config, |c| c.lock_delay);
+    let lock_delay_timer = lock_delay.map(cx, move |d| Timer::new(cx, *d));
+    let cur_piece = create_selector(cx, || field_signal.get().borrow().cur_piece().coords().clone());
+    let lock_delay_piece = create_signal(cx, (*cur_piece.get()).clone());
+
+    // auto lock
+    create_timer_finish_effect(cx, lock_delay_timer, || {
+        // lock the piece if it is the same as when the timer started
+        let still_same_piece = cur_piece.get_untracked() == lock_delay_piece.get_untracked();
+        if config.get_untracked().borrow().auto_lock_enabled && still_same_piece {
+            hard_drop(field_signal, bag, last_line_clear);
+        }
         false
-    }
+    });
 
-    fn process_lock_delay(&mut self, ctx: &Context<Self>, msg: BoardMessage) {
-        // activate lock delay after the piece touches the stack while falling
-        match msg {
-            BoardMessage::MoveLeft
-            | BoardMessage::MoveRight
-            | BoardMessage::MoveDown
-            | BoardMessage::ProjectDown
-            | BoardMessage::GravityDrop => {
-                if self.field.cur_piece_cannot_move_down() {
-                    // only reset the lock delay the first time the piece touches the stack
-                    if self.field.actions_since_lock_delay().is_none() {
-                        self.timers.reset_lock_delay(ctx);
-                    }
-                    self.field.activate_lock_delay();
-                }
-            }
-            _ => {}
+    // starts lock delay timer if the current piece touches the stack
+    create_effect(cx, || {
+        cur_piece.track();
+        if field_signal.get_untracked().borrow().cur_piece_cannot_move_down() {
+            util::with_signal_mut_untracked(field_signal, |field| field.activate_lock_delay());
+            lock_delay_piece.set((*cur_piece.get()).clone());
+            lock_delay_timer.get().start();
         }
+    });
 
-        if let Some(n_actions_now) = self.field.actions_since_lock_delay() {
-            // reset the lock delay if a lock delay resetting action occurred (e.g. successful movement)
-            if n_actions_now > self.prev_lock_delay_actions {
-                self.timers.reset_lock_delay(ctx);
-                self.prev_lock_delay_actions = n_actions_now;
-
-                // cap how many such actions can occur
-                if n_actions_now == self.config.move_limit && self.config.move_limit_enabled {
-                    ctx.link().send_message(BoardMessage::HardDrop);
-                }
+    view! { cx,
+        div(class="game", tabindex="0", style=game_style.get(), on:keydown=keydown_handler, on:keyup=keyup_handler) {
+            div(class="field-panel") {
+                div(class="hold-piece") { HoldPiece::<P, G> {} }
+                div(class="game-stats") { Stats { last_line_clear } }
             }
+            div(class="field") { Field::<P, G> {} }
+            div(class="next-queue") { NextQueue { bag } }
         }
-    }
-
-    fn reset(&mut self, ctx: &Context<Board>) {
-        self.bag = SingleBag::new();
-
-        let config = &ctx.props().config;
-        self.field = DefaultField::new(
-            config.field_width,
-            config.field_height,
-            config.field_hidden,
-            &mut self.bag,
-        );
-        self.input_states = InputStates::new(config.clone());
-
-        self.game_stats = GameStatsDrawer::new();
-
-        self.animation_state = AnimationState::new();
-        self.timers = BoardTimers::new(ctx, self.animation_state.get_active(), self.config.clone());
-        self.timers.reset_gravity(ctx);
     }
 }
 
-impl Component for Board {
-    type Message = BoardMessage;
-    type Properties = BoardProps;
+pub type AssetCache = HashMap<String, HtmlImageElement>;
 
-    fn create(ctx: &Context<Self>) -> Self {
-        let config = ctx.props().config.clone();
+fn make_asset_cache() -> AssetCache {
+    <SrsTetromino as PieceKind>::iter()
+        .map(|k| k.asset_name().to_string())
+        .chain(["grey".to_string()])
+        .flat_map(|asset_name| {
+            let field_square_mul = canvas::SQUARE_WIDTH as u32;
+            crate::SKIN_NAMES.iter().map(move |skin| {
+                let image = HtmlImageElement::new_with_width_and_height(field_square_mul, field_square_mul).unwrap();
+                let asset_src = format!("assets/skins/{}/{}.png", skin, asset_name);
+                image.set_src(&asset_src);
+                (asset_src.to_string(), image)
+            })
+        })
+        .collect()
+}
 
-        let mut bag = SingleBag::new();
-        let field = DefaultField::new(config.field_width, config.field_height, config.field_hidden, &mut bag);
-        let animation_state = AnimationState::new();
-
-        Board {
-            bag,
-            field,
-            input_states: InputStates::new(config.clone()),
-
-            canvas_renderer: CanvasRenderer::new(config.clone()),
-            game_stats: GameStatsDrawer::new(),
-
-            timers: BoardTimers::new(ctx, animation_state.get_active(), config.clone()),
-            animation_state,
-            prev_lock_delay_actions: 0,
-
-            game_div: NodeRef::default(),
-
-            config,
+// effect executed when the given `timer` finishes
+// if `op` returns true, the timer will start again (making a loop)
+fn create_timer_finish_effect<'a>(cx: Scope<'a>, timer: &'a ReadSignal<Timer>, mut op: impl FnMut() -> bool + 'a) {
+    create_effect(cx, move || {
+        if timer.get().is_finished() && op() {
+            timer.get().start();
         }
+    });
+}
+
+fn hard_drop<P: PieceKind>(
+    field: &Signal<RefCell<DefaultField<P>>>,
+    bag: &Signal<RefCell<SingleBag<P>>>,
+    last_line_clear: &Signal<Option<LineClear<P>>>,
+) {
+    util::with_signal_mut_untracked(field, |field| {
+        util::with_signal_mut_silent_untracked(bag, |bag| last_line_clear.set(Some(field.hard_drop(bag))))
+    });
+    util::notify_subscribers(bag);
+}
+
+// a resettable timer that waits for a timeout and sets a flag upon completion
+struct Timer<'a>(RefCell<TimerInner<'a>>);
+
+struct TimerInner<'a> {
+    cx: Scope<'a>,
+
+    duration: u32,
+    timeout: Option<Timeout>,
+    is_finished: &'a Signal<bool>,
+}
+
+impl<'a> Timer<'a> {
+    fn new(cx: Scope<'a>, duration: u32) -> Self {
+        Timer(RefCell::new(TimerInner {
+            cx,
+
+            duration,
+            timeout: None,
+            is_finished: create_signal(cx, false),
+        }))
     }
 
-    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
-        // handle input suppression first
-        match msg {
-            BoardMessage::MoveRight | BoardMessage::DasRight if self.input_states.is_pressed(Input::Left) => {
-                self.input_states.set_suppressed(Input::Left)
+    // this value is reactive and should be used to perform an action on completion of the timeout
+    fn is_finished(&self) -> bool { *self.0.borrow().is_finished.get() }
+
+    // run the timer, setting the `is_finished` signal to true when the `duration` has elapsed
+    fn start(&self) {
+        self.stop();
+
+        let scope_alive = use_scope_status(self.0.borrow().cx);
+        let is_finished = self.0.borrow().is_finished.clone();
+
+        // SAFETY: transmuting from 'a to 'static lets this be used in the timeout
+        // this is safe as we check if the scope is alive before calling the closure
+        let is_finished = unsafe { mem::transmute::<_, &'static Signal<bool>>(is_finished) };
+
+        let timeout = Timeout::new(self.0.borrow().duration, move || {
+            if *scope_alive.get() {
+                is_finished.set(true);
             }
-            BoardMessage::MoveLeft | BoardMessage::DasLeft if self.input_states.is_pressed(Input::Right) => {
-                self.input_states.set_suppressed(Input::Right);
+        });
+        self.0.borrow_mut().timeout = Some(timeout);
+    }
+
+    // stop any currently running timer and mark it as unfinished, effectively resetting it
+    fn stop(&self) {
+        self.0.borrow_mut().timeout.take().map(|t| t.cancel());
+        self.0.borrow().is_finished.set(false);
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum InputState {
+    Released,
+    Pressed,
+    Suppressed,
+}
+
+impl InputState {
+    pub fn is_pressed(&self) -> bool { self == &InputState::Pressed }
+
+    pub fn is_held(&self) -> bool { self != &InputState::Released }
+}
+
+// states of all the `Input`s
+pub struct InputStates {
+    states: HashMap<Input, InputState>,
+}
+
+impl InputStates {
+    fn new() -> Self {
+        let states = Input::iter().map(|input| (input, InputState::Released)).collect();
+        InputStates { states }
+    }
+
+    pub fn get_state(&self, input: &Input) -> InputState { *self.states.get(input).unwrap() }
+
+    fn set_state(&mut self, input: &Input, state: InputState) -> InputState {
+        self.states.insert(*input, state).unwrap()
+    }
+
+    pub fn set_pressed(&mut self, input: &Input) -> InputState {
+        // if left or right, suppress the other if it is pressed
+        if let Some(ref other) = Self::other_in_lr_pair(input) {
+            if self.get_state(other) == InputState::Pressed {
+                self.set_suppressed(other);
             }
-            _ => {}
         }
+        self.set_state(input, InputState::Pressed)
+    }
 
-        match msg {
-            BoardMessage::KeyPressed(ref e) => return self.process_key_press(ctx, e),
-            BoardMessage::KeyReleased(ref e) => return self.process_key_release(e),
-            _ => {}
-        };
-
-        // handle resets before topping out so you can reset once topped out
-        if matches!(msg, BoardMessage::Reset) {
-            self.reset(ctx);
-            return true;
-        }
-
-        // freeze the game when topped out
-        if self.field.topped_out() && self.config.topping_out_enabled {
-            return false;
-        }
-
-        // avoids clutter from making every match arm a block with `true` or `false` at the end
-        let to_true = |_| true;
-        let to_false = |_| false;
-
-        // action messages
-        let update = match msg {
-            BoardMessage::MoveLeft => self.field.try_shift(0, -1),
-            BoardMessage::MoveRight => self.field.try_shift(0, 1),
-            BoardMessage::MoveDown => self.field.try_shift(1, 0),
-
-            BoardMessage::MoveLeftAutoRepeat => to_true(self.input_states.left_held(ctx)),
-            BoardMessage::MoveRightAutoRepeat => to_true(self.input_states.right_held(ctx)),
-            BoardMessage::DasLeft => to_true(while self.field.try_shift(0, -1) {}),
-            BoardMessage::DasRight => to_true(while self.field.try_shift(0, 1) {}),
-            BoardMessage::ProjectDown => self.field.project_down(),
-
-            BoardMessage::RotateCw => self.field.try_rotate_cw(&SrsKickTable),
-            BoardMessage::RotateCcw => self.field.try_rotate_ccw(&SrsKickTable),
-            BoardMessage::Rotate180 => self.field.try_rotate_180(&Tetrio180KickTable),
-
-            BoardMessage::SwapHoldPiece => self
-                .field
-                .swap_hold_piece(&mut self.bag)
-                .then(|| self.timers.cancel_lock_delay())
-                .is_some(),
-            BoardMessage::HardDrop => {
-                self.timers.reset_gravity(ctx);
-                self.timers.cancel_lock_delay();
-                self.prev_lock_delay_actions = 0;
-
-                let clear_type = self.field.hard_drop(&mut self.bag);
-                self.game_stats.set_clear_type(&mut self.animation_state, clear_type);
-                true
+    pub fn set_released(&mut self, input: &Input) {
+        // if left or right, unsuppress the other
+        if let Some(ref other) = Self::other_in_lr_pair(input) {
+            if self.get_state(other) == InputState::Suppressed {
+                self.set_pressed(other);
             }
-            // only lock if the piece is still touching the stack
-            BoardMessage::LockDelayDrop => (self.field.cur_piece_cannot_move_down() && self.config.auto_lock_enabled)
-                .then(|| ctx.link().send_message(BoardMessage::HardDrop))
-                .is_some(),
-            BoardMessage::GravityDrop => self
-                .config
-                .gravity_enabled
-                .then(|| self.field.try_shift(1, 0))
-                .is_some(),
-
-            BoardMessage::TickAnimation(animation) => to_true(self.animation_state.tick(ctx, animation)),
-            BoardMessage::StopAnimation(animation) => to_false(self.animation_state.stop_animation(animation)),
-            _ => false,
-        };
-
-        // process lock delay after movement actions (which may affect it)
-        self.process_lock_delay(ctx, msg);
-
-        update
+        }
+        self.set_state(input, InputState::Released);
     }
 
-    fn changed(&mut self, ctx: &Context<Self>) -> bool {
-        self.config = ctx.props().config.clone();
+    // suppressed inputs stop repeating until set to pressed or released
+    fn set_suppressed(&mut self, input: &Input) { self.set_state(input, InputState::Suppressed); }
 
-        // update config-dependent parts
-        self.input_states.update_config(self.config.clone());
-        self.canvas_renderer.update_config(self.config.clone());
-
-        self.timers = BoardTimers::new(ctx, self.animation_state.get_active(), self.config.clone());
-        self.timers.reset_gravity(ctx);
-        self.timers.reset_lock_delay(ctx);
-
-        let field_changed = self.config.field_width != self.field.width()
-            || self.config.field_height != self.field.height()
-            || self.config.field_hidden != self.field.hidden();
-
-        // changes to field properties (width, height, etc.) must reset the board
-        if field_changed {
-            self.reset(ctx);
+    // return the other input if the given input is left or right
+    fn other_in_lr_pair(input: &Input) -> Option<Input> {
+        match input {
+            Input::Left => Some(Input::Right),
+            Input::Right => Some(Input::Left),
+            _ => None,
         }
-        true
-    }
-
-    fn view(&self, ctx: &yew::Context<Self>) -> Html {
-        let link = ctx.link();
-        let key_pressed_callback = link.callback(|e| BoardMessage::KeyPressed(e));
-        let key_released_callback = link.callback(|e| BoardMessage::KeyReleased(e));
-
-        let game_style = format!(
-            "transform: scale({}%); margin-top: {}px;",
-            self.config.field_zoom * 100.0,
-            self.config.vertical_offset,
-        );
-
-        html! {
-            <div ref={ self.game_div.clone() }
-                 class="game"
-                 tabindex="0"
-                 onkeydown={ key_pressed_callback }
-                 onkeyup={ key_released_callback }
-                 style={ game_style }>
-                <div class="field-left-panel">
-                    <div class="hold-piece">
-                        { self.canvas_renderer.hold_piece_canvas() }
-                    </div>
-                    { self.game_stats.get_html(&self.animation_state) }
-                </div>
-                <div class="field">
-                    { self.canvas_renderer.field_canvas(&self.field) }
-                </div>
-                <div class="next-queue">
-                    { self.canvas_renderer.next_queue_canvas(&self.config) }
-                </div>
-            </div>
-        }
-    }
-
-    fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {
-        if first_render {
-            self.timers.reset_gravity(ctx);
-            self.game_div.cast::<HtmlElement>().unwrap().focus().unwrap();
-        }
-        self.canvas_renderer.draw_hold_piece(&self.field);
-        self.canvas_renderer.draw_next_queue(&mut self.bag, &self.config);
-        self.canvas_renderer.draw_field(&self.field, first_render);
     }
 }

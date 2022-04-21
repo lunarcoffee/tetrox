@@ -1,11 +1,10 @@
-use std::{mem, ops};
+use std::ops;
 
 use num_traits::ToPrimitive;
-use rand::prelude::SliceRandom;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
-use crate::{field::DefaultField, Bag, Coords, CoordsFloat, KickTable, KickTable180, PieceKind, RotationState};
+use crate::{field::DefaultField, Coords, CoordsFloat, KickTable, KickTable180, PieceKind, RotationState};
 
 #[derive(Copy, Clone, Debug, EnumIter, PartialEq, Eq, Hash)]
 pub enum SrsTetromino {
@@ -109,44 +108,6 @@ impl PieceKind for SrsTetromino {
     fn n_kinds() -> usize { 7 }
 }
 
-pub struct SingleBag<P: PieceKind> {
-    bag: Vec<P>,
-}
-
-impl<P: PieceKind> SingleBag<P> {
-    pub fn new() -> Self {
-        let mut bag = SingleBag { bag: vec![] };
-        bag.update_bag();
-        bag.update_bag();
-        bag
-    }
-
-    fn update_bag(&mut self) {
-        if self.bag.len() <= P::n_kinds() {
-            let mut next_bag = P::iter().collect::<Vec<_>>();
-            next_bag.shuffle(&mut rand::thread_rng());
-
-            // prepend to preserve peek order
-            mem::swap(&mut self.bag, &mut next_bag);
-            self.bag.extend(next_bag);
-        }
-    }
-}
-
-impl<P: PieceKind> Bag<P> for SingleBag<P> {
-    fn next(&mut self) -> P {
-        self.update_bag();
-        self.bag.pop().unwrap()
-    }
-
-    fn peek(&mut self) -> Box<dyn Iterator<Item = &P> + '_> {
-        self.update_bag();
-        Box::new(self.bag.iter().rev())
-    }
-
-    fn lookahead(&self) -> usize { P::n_kinds() }
-}
-
 pub struct SrsKickTable;
 
 impl KickTable<SrsTetromino> for SrsKickTable {
@@ -179,10 +140,20 @@ impl KickTable<SrsTetromino> for SrsKickTable {
     }
 }
 
-// 180 rotate kick table from tetr.io
-pub struct Tetrio180KickTable;
+impl<P: PieceKind> KickTable<P> for SrsKickTable {
+    default fn rotate_cw(&self, _: P, _: RotationState) -> Vec<Coords> {
+        vec![Coords(0, 0)]
+    }
 
-impl KickTable<SrsTetromino> for Tetrio180KickTable {
+    default fn rotate_ccw(&self, _: P, _: RotationState) -> Vec<Coords> {
+        vec![Coords(0, 0)]
+    }
+}
+
+// 180 rotate kick table from tetr.io
+pub struct TetrIo180KickTable;
+
+impl KickTable<SrsTetromino> for TetrIo180KickTable {
     fn rotate_cw(&self, piece: SrsTetromino, rotation_state: RotationState) -> Vec<Coords> {
         SrsKickTable.rotate_cw(piece, rotation_state)
     }
@@ -192,7 +163,7 @@ impl KickTable<SrsTetromino> for Tetrio180KickTable {
     }
 }
 
-impl KickTable180<SrsTetromino> for Tetrio180KickTable {
+impl KickTable180<SrsTetromino> for TetrIo180KickTable {
     fn rotate_180(&self, _piece: SrsTetromino, rotation_state: RotationState) -> Vec<Coords> {
         match rotation_state {
             RotationState::Initial => vec![(0, 0), (-1, 0), (-1, 1), (-1, -1), (0, 1), (0, -1)],
@@ -203,5 +174,11 @@ impl KickTable180<SrsTetromino> for Tetrio180KickTable {
         .into_iter()
         .map(|(row_shift, col_shift)| Coords(row_shift, col_shift))
         .collect::<Vec<_>>()
+    }
+}
+
+impl<P: PieceKind> KickTable180<P> for TetrIo180KickTable {
+    default fn rotate_180(&self, _: P, _: RotationState) -> Vec<Coords> {
+        vec![Coords(0, 0)]
     }
 }

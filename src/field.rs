@@ -38,6 +38,7 @@ impl<P: PieceKind> Line<P> {
     fn get_mut(&mut self, i: usize) -> &mut Square<P> { &mut self.squares[i] }
 }
 
+#[derive(Clone)]
 pub struct LineClear<P: PieceKind> {
     n_lines: usize,
     spin: Option<P>,
@@ -140,13 +141,11 @@ impl<P: PieceKind> LivePiece<P> {
 
     // if the piece being checked has a previous state, `old_piece` should represent that state
     fn is_blocked(&self, old_piece: Option<&LivePiece<P>>, field: &DefaultField<P>) -> bool {
-        self.coords
-            .iter()
-            // make sure the coords are in bounds and are not filled by other pieces
-            .any(|c| {
-                !field.coords_in_bounds(&c)
-                    || !field.get_at(c).unwrap().is_empty() && old_piece.map(|p| !p.coords.contains(c)).unwrap_or(true)
-            })
+        // make sure the coords are in bounds and are not filled by other pieces
+        self.coords.iter().any(|c| {
+            !field.coords_in_bounds(&c)
+                || !field.get_at(&c).unwrap().is_empty() && old_piece.map(|p| !p.coords.contains(c)).unwrap_or(true)
+        })
     }
 }
 
@@ -308,8 +307,9 @@ impl<P: PieceKind> DefaultField<P> {
                     // used for checking spins (e.g t-spins)
                     self.last_cur_piece_kick = Some(kick);
                 }
+                // update if a fitting kicked rotation exists
                 self.try_update_cur_piece(piece)
-            }) // update if a fitting kicked rotation exists
+            })
             .unwrap_or(false)
     }
 
@@ -334,10 +334,8 @@ impl<P: PieceKind> DefaultField<P> {
         self.try_update_cur_piece(LivePiece::new(kind, &self.piece_origin))
     }
 
-    pub fn swap_hold_piece(&mut self, bag: &mut impl Bag<P>) -> bool {
-        if self.hold_swapped {
-            false
-        } else {
+    pub fn swap_hold_piece(&mut self, bag: &mut impl Bag<P>) {
+        if !self.hold_swapped {
             self.last_cur_piece_kick = None;
             self.hold_swapped = true;
             self.lock_delay_actions = None;
@@ -346,9 +344,9 @@ impl<P: PieceKind> DefaultField<P> {
             self.hold_piece = Some(self.cur_piece.kind());
 
             if let Some(kind) = hold_kind {
-                self.try_update_cur_piece(LivePiece::new(kind, &self.piece_origin))
+                self.try_update_cur_piece(LivePiece::new(kind, &self.piece_origin));
             } else {
-                self.try_spawn(bag)
+                self.try_spawn(bag);
             }
         }
     }

@@ -12,7 +12,7 @@ input[type=range]:focus {
 /* webkit thumb */
 input[type=range]::-webkit-slider-thumb {
     -webkit-appearance: none;
-    background: #cccccc;
+    background: #c1b5e0;
 
     margin-top: -6px;
 
@@ -27,7 +27,7 @@ input[type=range]::-webkit-slider-thumb {
 
 /* firefox thumb */
 input[type=range]::-moz-range-thumb {
-    background: #cccccc;
+    background: #c1b5e0;
 
     height: 16px;
     width: 8px;
@@ -45,7 +45,7 @@ input[type=range]::-webkit-slider-runnable-track {
 
     margin: 8px 0;
 
-    background: #b4b4b488;
+    background: #8887b688;
 
     cursor: pointer;
 }
@@ -56,7 +56,7 @@ input[type=range]::-moz-range-track {
     height: 4px;
     border-radius: 2px;
 
-    background: #b4b4b488;
+    background: #8887b688;
 
     cursor: pointer;
 }
