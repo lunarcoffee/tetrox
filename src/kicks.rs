@@ -3,7 +3,10 @@ use std::ops;
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
 
-use crate::{pieces::{PieceKind, tetromino::TetrominoSrs}, Coords};
+use crate::{
+    pieces::{tetromino::TetrominoSrs, PieceKind},
+    Coords,
+};
 
 #[derive(Clone, Copy, FromPrimitive, ToPrimitive)]
 pub enum RotationState {
@@ -54,21 +57,21 @@ pub struct SrsKickTable;
 impl KickTable for SrsKickTable {
     fn rotate_cw(&self, piece: PieceKind, rotation_state: RotationState) -> Vec<Coords> {
         match piece {
-            PieceKind::TetrominoSrs(p @ (TetrominoSrs::O | TetrominoSrs::I)) => match p {
-                TetrominoSrs::O => vec![(0, 0)],
-                _ => match rotation_state {
+            PieceKind::TetrominoSrs(kind) if kind != TetrominoSrs::O => match kind {
+                TetrominoSrs::I => match rotation_state {
                     RotationState::Initial => vec![(0, 0), (0, -2), (0, 1), (1, -2), (-2, 1)],
                     RotationState::Cw => vec![(0, 0), (0, -1), (0, 2), (-2, -1), (1, 2)],
                     RotationState::Flipped => vec![(0, 0), (0, 2), (0, -1), (-1, 2), (2, -1)],
                     RotationState::Ccw => vec![(0, 0), (0, 1), (0, -2), (2, 1), (-1, -2)],
                 },
+                _ => match rotation_state {
+                    RotationState::Initial => vec![(0, 0), (0, -1), (-1, -1), (2, 0), (2, -1)],
+                    RotationState::Cw => vec![(0, 0), (0, 1), (1, 1), (-2, 0), (-2, 1)],
+                    RotationState::Flipped => vec![(0, 0), (0, 1), (-1, 1), (2, 0), (2, 1)],
+                    RotationState::Ccw => vec![(0, 0), (0, -1), (1, -1), (-2, 0), (-2, -1)],
+                },
             },
-            _ => match rotation_state {
-                RotationState::Initial => vec![(0, 0), (0, -1), (-1, -1), (2, 0), (2, -1)],
-                RotationState::Cw => vec![(0, 0), (0, 1), (1, 1), (-2, 0), (-2, 1)],
-                RotationState::Flipped => vec![(0, 0), (0, 1), (-1, 1), (2, 0), (2, 1)],
-                RotationState::Ccw => vec![(0, 0), (0, -1), (1, -1), (-2, 0), (-2, -1)],
-            },
+            _ => vec![(0, 0)],
         }
         .into_iter()
         .map(|(row_shift, col_shift)| Coords(row_shift, col_shift))

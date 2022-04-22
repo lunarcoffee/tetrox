@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::{Coords, CoordsFloat, PieceKind, Randomizer, kicks::{KickTable, KickTable180, RotationState}};
+use crate::{Coords, CoordsFloat, PieceKind, Randomizer, kicks::{KickTable, KickTable180, RotationState}, spins::SpinDetector};
 
 #[derive(Copy, Clone)]
 pub enum Square {
@@ -20,7 +20,7 @@ pub struct Line {
 }
 
 impl Line {
-    pub fn new(width: usize) -> Self {
+    fn new(width: usize) -> Self {
         Line {
             squares: (0..width).map(|_| Square::Empty).collect(),
         }
@@ -28,12 +28,12 @@ impl Line {
 
     pub fn squares(&self) -> &[Square] { &self.squares }
 
-    fn is_empty(&self) -> bool { self.squares.iter().all(|s| s.is_empty()) }
+    pub fn is_empty(&self) -> bool { self.squares.iter().all(|s| s.is_empty()) }
 
     // all squares are filled (not empty or solid garbage)
-    fn is_clear(&self) -> bool { self.squares.iter().all(|s| s.is_filled()) }
+    pub fn is_clear(&self) -> bool { self.squares.iter().all(|s| s.is_filled()) }
 
-    fn get(&self, i: usize) -> Square { self.squares[i] }
+    pub fn get(&self, i: usize) -> Square { self.squares[i] }
 
     fn get_mut(&mut self, i: usize) -> &mut Square { &mut self.squares[i] }
 }
@@ -47,7 +47,7 @@ pub struct LineClear {
 }
 
 impl LineClear {
-    pub fn new(n_lines: usize, spin: Option<PieceKind>, is_mini: bool, is_perfect_clear: bool) -> Self {
+    fn new(n_lines: usize, spin: Option<PieceKind>, is_mini: bool, is_perfect_clear: bool) -> Self {
         LineClear {
             n_lines,
             spin,
@@ -92,7 +92,7 @@ impl LivePiece {
 
     pub fn rotation_state(&self) -> RotationState { self.rotation_state }
 
-    fn shifted(&self, rows: i32, cols: i32) -> LivePiece {
+    pub fn shifted(&self, rows: i32, cols: i32) -> LivePiece {
         let coords = self
             .coords
             .iter()
@@ -103,7 +103,7 @@ impl LivePiece {
     }
 
     // these rotations do not use kicks
-    fn rotated_cw(&self) -> LivePiece {
+    pub fn rotated_cw(&self) -> LivePiece {
         let (pivot_index, offset) = self.kind.pivot_offset(self.rotation_state);
         let pivot = self.coords[pivot_index].to_coords_float() + offset;
 
@@ -122,12 +122,12 @@ impl LivePiece {
         }
     }
 
-    fn rotated_ccw(&self) -> LivePiece { self.rotated_cw().rotated_cw().rotated_cw() }
+    pub fn rotated_ccw(&self) -> LivePiece { self.rotated_cw().rotated_cw().rotated_cw() }
 
-    fn rotated_180(&self) -> LivePiece { self.rotated_cw().rotated_cw() }
+    pub fn rotated_180(&self) -> LivePiece { self.rotated_cw().rotated_cw() }
 
     // shadow piece, hard drop position, etc.
-    fn projected_down(&self, field: &DefaultField) -> LivePiece {
+    pub fn projected_down(&self, field: &DefaultField) -> LivePiece {
         let shifted = self.shifted(1, 0);
         if shifted.is_blocked(Some(&self), field) {
             LivePiece {
@@ -140,7 +140,7 @@ impl LivePiece {
     }
 
     // if the piece being checked has a previous state, `old_piece` should represent that state
-    fn is_blocked(&self, old_piece: Option<&LivePiece>, field: &DefaultField) -> bool {
+    pub fn is_blocked(&self, old_piece: Option<&LivePiece>, field: &DefaultField) -> bool {
         // make sure the coords are in bounds and are not filled by other pieces
         self.coords.iter().any(|c| {
             !field.coords_in_bounds(&c)
@@ -363,12 +363,12 @@ impl DefaultField {
         self.try_update_cur_piece(projected)
     }
 
-    pub fn hard_drop(&mut self, bag: &mut impl Randomizer) -> LineClear {
+    pub fn hard_drop(&mut self, bag: &mut impl Randomizer, spin_detector: &dyn SpinDetector) -> LineClear {
         self.hold_swapped = false;
         self.lock_delay_actions = None;
 
         self.project_down();
-        let clear_type = self.clear_lines();
+        let clear_type = self.clear_lines(spin_detector);
         self.last_cur_piece_kick = None;
         self.topped_out = self.cur_piece_tops_out();
 
@@ -385,7 +385,7 @@ impl DefaultField {
             || coords.iter().any(|c| self.spawn_area.contains(c))
     }
 
-    pub fn clear_lines(&mut self) -> LineClear {
+    pub fn clear_lines(&mut self, spin_detector: &dyn SpinDetector) -> LineClear {
         let uncleared_lines = self
             .lines
             .iter()
@@ -394,7 +394,7 @@ impl DefaultField {
             .collect::<Vec<_>>();
 
         let n_cleared = self.height - uncleared_lines.len();
-        let clear_type = self.line_clear_type(n_cleared);
+        let clear_type = self.line_clear_type(n_cleared, spin_detector);
 
         // pad board with empty lines
         self.lines = (0..n_cleared).map(|_| Line::new(self.width)).collect();
@@ -403,8 +403,8 @@ impl DefaultField {
         clear_type
     }
 
-    pub fn line_clear_type(&mut self, n_cleared: usize) -> LineClear {
-        let (spin, is_mini) = self.cur_piece.kind().detect_spin(&self);
+    pub fn line_clear_type(&mut self, n_cleared: usize, spin_detector: &dyn SpinDetector) -> LineClear {
+        let (spin, is_mini) = spin_detector.detect(&self);
         LineClear::new(n_cleared, spin, is_mini, self.is_clear())
     }
 

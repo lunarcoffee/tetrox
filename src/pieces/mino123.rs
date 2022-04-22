@@ -1,7 +1,7 @@
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
-use crate::{field::DefaultField, Coords, CoordsFloat, PieceKind};
+use crate::{Coords, CoordsFloat, PieceKind};
 
 use super::{PieceKindTrait, RotationState};
 
@@ -42,9 +42,7 @@ impl PieceKindTrait for Mino123 {
             Mino123::ITromino => (1, CoordsFloat::zero()),
         }
     }
-
-    fn detect_spin(&self, _: &DefaultField) -> (Option<PieceKind>, bool) { (None, false) }
-
+    
     fn asset_name(&self) -> &str {
         match self {
             Mino123::Monomino => "o",

@@ -1,6 +1,6 @@
 use crate::{
     canvas::{self, Field, HoldPiece, NextQueue},
-    config::{Config, Input, PieceTypes},
+    config::{Config, Input, PieceTypes, SpinTypes},
     stats::Stats,
     util,
 };
@@ -23,7 +23,7 @@ use sycamore::{
 use tetrox::{
     field::{DefaultField, LineClear},
     pieces::{tetromino::TetrominoSrs, PieceKindTrait},
-    Randomizer, SingleBag,
+    Randomizer, SingleBag, spins::SpinDetector,
 };
 use wasm_bindgen::JsCast;
 use web_sys::{Event, HtmlImageElement, KeyboardEvent};
@@ -40,6 +40,8 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>, props: BoardProps<'a>) -> View<G> {
     let c = c.borrow();
 
     let piece_kinds = props.piece_type.get().kinds();
+    let spin_types = util::create_config_selector(cx, config, |c| c.spin_types);
+
     let mut bag = SingleBag::new(piece_kinds.clone());
     let field = DefaultField::new(c.field_width, c.field_height, c.field_hidden, &piece_kinds, &mut bag);
     let field_signal = create_signal(cx, RefCell::new(field));
@@ -181,7 +183,7 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>, props: BoardProps<'a>) -> View<G> {
                     bag.set(RefCell::new(new_bag));
                     inputs.set(RefCell::new(InputStates::new()));
                 }
-                Input::HardDrop => hard_drop(field_signal, bag, last_line_clear),
+                Input::HardDrop => hard_drop(field_signal, bag, spin_types, last_line_clear),
                 _ => {}
             }
 
@@ -236,7 +238,7 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>, props: BoardProps<'a>) -> View<G> {
     create_effect(cx, || {
         let limit_reached = actions_since_lock_delay.get() == move_limit.get_untracked();
         if config.get_untracked().borrow().move_limit_enabled && limit_reached {
-            hard_drop(field_signal, bag, last_line_clear);
+            hard_drop(field_signal, bag, spin_types, last_line_clear);
         }
     });
 
@@ -250,7 +252,7 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>, props: BoardProps<'a>) -> View<G> {
         // lock the piece if it is the same as when the timer started
         let still_same_piece = cur_piece.get_untracked() == lock_delay_piece.get_untracked();
         if config.get_untracked().borrow().auto_lock_enabled && still_same_piece {
-            hard_drop(field_signal, bag, last_line_clear);
+            hard_drop(field_signal, bag, spin_types, last_line_clear);
         }
         false
     });
@@ -308,10 +310,13 @@ fn create_timer_finish_effect<'a>(cx: Scope<'a>, timer: &'a ReadSignal<Timer>, m
 fn hard_drop(
     field: &Signal<RefCell<DefaultField>>,
     bag: &Signal<RefCell<impl Randomizer>>,
+    spin_types: &ReadSignal<SpinTypes>,
     last_line_clear: &Signal<Option<LineClear>>,
 ) {
     util::with_signal_mut_untracked(field, |field| {
-        util::with_signal_mut_silent_untracked(bag, |bag| last_line_clear.set(Some(field.hard_drop(bag))))
+        util::with_signal_mut_silent_untracked(bag, |bag| {
+            last_line_clear.set(Some(field.hard_drop(bag, spin_types.get().detector())))
+        })
     });
     util::notify_subscribers(bag);
 }

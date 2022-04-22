@@ -1,4 +1,4 @@
-use crate::{field::DefaultField, Coords, CoordsFloat, PieceKind};
+use crate::{Coords, CoordsFloat, PieceKind};
 
 use super::{mino123::Mino123, tetromino::TetrominoSrs, RotationState, PieceKindTrait};
 
@@ -22,13 +22,6 @@ impl PieceKindTrait for Mino1234 {
             Mino1234::TetrominoSrs(p) => p.pivot_offset(rotation_state),
         }
     }
-
-    fn detect_spin(&self, field: &DefaultField) -> (Option<PieceKind>, bool) { 
-        match self {
-            Mino1234::Mino123(p) => p.detect_spin(field),
-            Mino1234::TetrominoSrs(p) => p.detect_spin(field),
-        }
-     }
 
     fn asset_name(&self) -> &str {
         match self {

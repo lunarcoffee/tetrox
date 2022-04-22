@@ -5,6 +5,7 @@
 pub mod field;
 pub mod pieces;
 pub mod kicks;
+pub mod spins;
 
 use std::{mem, ops};
 

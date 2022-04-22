@@ -1,4 +1,4 @@
-use crate::{Coords, CoordsFloat, field::DefaultField, kicks::RotationState};
+use crate::{Coords, CoordsFloat, kicks::RotationState};
 
 use self::{tetromino::{TetrominoSrs, TetrominoAsc}, mino123::Mino123, mino1234::Mino1234};
 
@@ -13,9 +13,6 @@ pub trait PieceKindTrait {
     // index of the rotation pivot of the piece with a possibly zero offset
     // pieces like the i tetromino have apparent pivots that intersect
     fn pivot_offset(&self, rotation_state: RotationState) -> (usize, CoordsFloat);
-
-    // returns the type of spin after a hard drop (if any) and whether it is mini
-    fn detect_spin(&self, field: &DefaultField) -> (Option<PieceKind>, bool);
 
     fn asset_name(&self) -> &str;
 
@@ -50,10 +47,6 @@ impl PieceKind {
 
     pub fn pivot_offset(&self, rotation_state: RotationState) -> (usize, CoordsFloat) {
         gen_piece_kind_match!(self, pivot_offset, rotation_state)
-    }
-
-    pub fn detect_spin(&self, field: &DefaultField) -> (Option<Self>, bool) {
-        gen_piece_kind_match!(self, detect_spin, field)
     }
 
     pub fn asset_name(&self) -> &str { gen_piece_kind_match!(self, asset_name) }

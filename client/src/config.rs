@@ -27,6 +27,7 @@ use tetrox::{
         tetromino::{TetrominoAsc, TetrominoSrs},
         PieceKind, PieceKindTrait,
     },
+    spins::{SpinDetector, TSpinDetector, ImmobileSpinDetector, NoSpinDetector},
 };
 use wasm_bindgen::JsCast;
 use web_sys::{Event, HtmlInputElement, HtmlSelectElement, KeyboardEvent, Storage};
@@ -85,7 +86,7 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
                 topping_out_enabled; ToppingOutEnabled, auto_lock_enabled; AutoLockEnabled,
                 gravity_enabled; GravityEnabled, move_limit_enabled; MoveLimitEnabled, field_width; FieldWidth,
                 queue_len; QueueLen, piece_type; PieceType, kick_table; KickTable, kick_table_180; KickTable180,
-                skin_name; SkinName, field_zoom; FieldZoom, vertical_offset; VerticalOffset,
+                spin_types; SpinType, skin_name; SkinName, field_zoom; FieldZoom, vertical_offset; VerticalOffset,
                 shadow_opacity; ShadowOpacity, keybinds; Keybinds, delayed_auto_shift; DelayedAutoShift,
                 auto_repeat_rate; AutoRepeatRate, soft_drop_rate; SoftDropRate
             }
@@ -103,9 +104,10 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
         gravity_delay; GravityDelay, lock_delay; LockDelay, move_limit; MoveLimit,
         topping_out_enabled; ToppingOutEnabled, auto_lock_enabled; AutoLockEnabled, gravity_enabled; GravityEnabled,
         move_limit_enabled; MoveLimitEnabled, field_width; FieldWidth, field_hidden; FieldHidden, queue_len; QueueLen,
-        piece_type; PieceType, kick_table; KickTable, kick_table_180; KickTable180, skin_name; SkinName,
-        field_zoom; FieldZoom, vertical_offset; VerticalOffset, shadow_opacity; ShadowOpacity, keybinds; Keybinds,
-        delayed_auto_shift; DelayedAutoShift, auto_repeat_rate; AutoRepeatRate, soft_drop_rate; SoftDropRate
+        piece_type; PieceType, kick_table; KickTable, kick_table_180; KickTable180, spin_types; SpinType,
+        skin_name; SkinName, field_zoom; FieldZoom, vertical_offset; VerticalOffset, shadow_opacity; ShadowOpacity,
+        keybinds; Keybinds, delayed_auto_shift; DelayedAutoShift, auto_repeat_rate; AutoRepeatRate,
+        soft_drop_rate; SoftDropRate
     };
 
     let skin_name_items = ["Tetrox", "Gradient", "Inset", "Cirxel", "TETR.IO", "Solid"]
@@ -118,6 +120,7 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
         .collect();
     let kick_table_items = ["SRS", "ASC", "Basic"].into_iter().zip(KickTables::iter()).collect();
     let kick_table_180_items = ["TETR.IO", "Basic"].into_iter().zip(KickTable180s::iter()).collect();
+    let spin_type_items = ["T-Spin", "All (immobile)", "None"].into_iter().zip(SpinTypes::iter()).collect();
 
     macro_rules! keybind_capture_buttons {
         ($($label:expr; $input:ident),*) => { view! { cx,
@@ -149,6 +152,7 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
                 SelectInput { label: "Piece kind", items: piece_kind_items, value: piece_type }
                 SelectInput { label: "Kick table", items: kick_table_items, value: kick_table }
                 SelectInput { label: "180 kick table", items: kick_table_180_items, value: kick_table_180 }
+                SelectInput { label: "Spin types", items: spin_type_items, value: spin_types }
                 Padding(4)
 
                 SectionHeading("Visual")
@@ -381,6 +385,7 @@ enum ConfigMsg {
     PieceType(PieceTypes),
     KickTable(KickTables),
     KickTable180(KickTable180s),
+    SpinType(SpinTypes),
 
     SkinName(String),
     FieldZoom(f64),
@@ -450,6 +455,23 @@ impl KickTable180s {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize, EnumIter)]
+pub enum SpinTypes {
+    TSpins,
+    AllImmobile,
+    None,
+}
+
+impl SpinTypes {
+    pub fn detector(&self) -> &dyn SpinDetector {
+        match self {
+            SpinTypes::TSpins => &TSpinDetector,
+            SpinTypes::AllImmobile => &ImmobileSpinDetector,
+            SpinTypes::None => &NoSpinDetector,
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, EnumIter)]
 pub enum Input {
     Left,
@@ -485,6 +507,7 @@ pub struct Config {
     pub piece_type: PieceTypes,
     pub kick_table: KickTables,
     pub kick_table_180: KickTable180s,
+    pub spin_types: SpinTypes,
 
     // visual settings
     pub skin_name: String,
@@ -537,6 +560,7 @@ impl Default for Config {
             piece_type: PieceTypes::TetrominoSrs,
             kick_table: KickTables::Srs,
             kick_table_180: KickTable180s::TetrIo,
+            spin_types: SpinTypes::TSpins,
 
             gravity_delay: 1_000,
             lock_delay: 500,
