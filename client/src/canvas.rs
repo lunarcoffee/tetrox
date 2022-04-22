@@ -10,7 +10,7 @@ use sycamore::{
 };
 use tetrox::{
     field::{DefaultField, Square},
-    Bag, Coords, PieceKind, SingleBag,
+    Coords, PieceKind, Randomizer,
 };
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
@@ -30,7 +30,7 @@ pub const SIDE_BAR_WIDTH: usize = SQUARE_WIDTH * 5; // width of hold/queue panel
 pub const SIDE_BAR_PADDING: usize = SQUARE_WIDTH / 6; // bottom padding of hold/queue panels
 
 #[component]
-pub fn HoldPiece<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
+pub fn HoldPiece<'a, G: Html>(cx: Scope<'a>) -> View<G> {
     let hold_piece_ref = create_node_ref(cx);
     let view = view! { cx,
         canvas(
@@ -41,7 +41,7 @@ pub fn HoldPiece<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> 
         )
     };
 
-    let field = use_context::<Signal<RefCell<DefaultField<P>>>>(cx);
+    let field = use_context::<Signal<RefCell<DefaultField>>>(cx);
     let asset_cache = use_context::<AssetCache>(cx);
 
     let config = use_context::<Signal<RefCell<Config>>>(cx);
@@ -55,7 +55,7 @@ pub fn HoldPiece<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> 
 }
 
 #[component]
-pub fn Field<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
+pub fn Field<'a, G: Html>(cx: Scope<'a>) -> View<G> {
     let field_vals = use_context::<ReadSignal<FieldValues>>(cx);
     let field_dims = create_selector(cx, || {
         let field_vals = field_vals.get();
@@ -73,7 +73,7 @@ pub fn Field<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
         )
     };
 
-    let field = use_context::<Signal<RefCell<DefaultField<P>>>>(cx);
+    let field = use_context::<Signal<RefCell<DefaultField>>>(cx);
     let asset_cache = use_context::<AssetCache>(cx);
 
     let config = use_context::<Signal<RefCell<Config>>>(cx);
@@ -90,12 +90,12 @@ pub fn Field<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
 }
 
 #[derive(Prop)]
-pub struct NextQueueProps<'a, P: PieceKind> {
-    bag: &'a Signal<RefCell<SingleBag<P>>>,
+pub struct NextQueueProps<'a, R: Randomizer> {
+    bag: &'a Signal<RefCell<R>>,
 }
 
 #[component]
-pub fn NextQueue<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>, props: NextQueueProps<'a, P>) -> View<G> {
+pub fn NextQueue<'a, R: Randomizer, G: Html>(cx: Scope<'a>, props: NextQueueProps<'a, R>) -> View<G> {
     let field_vals = use_context::<ReadSignal<FieldValues>>(cx);
     let queue_len = create_selector(cx, || field_vals.get().queue_len);
     let next_queue_ref = create_node_ref(cx);
@@ -109,7 +109,7 @@ pub fn NextQueue<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>, props: Next
         )
     };
 
-    let field = use_context::<Signal<RefCell<DefaultField<P>>>>(cx);
+    let field = use_context::<Signal<RefCell<DefaultField>>>(cx);
     let asset_cache = use_context::<AssetCache>(cx);
 
     let config = use_context::<Signal<RefCell<Config>>>(cx);
@@ -124,12 +124,12 @@ pub fn NextQueue<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>, props: Next
     view
 }
 
-fn get_canvas_drawer<'a, P: PieceKind + 'static, G: Html>(
+fn get_canvas_drawer<'a, G: Html>(
     canvas_ref: &NodeRef<G>,
-    field: &'a DefaultField<P>,
+    field: &'a DefaultField,
     asset_cache: &'a AssetCache,
     skin_name: &'a ReadSignal<String>,
-) -> Option<CanvasDrawer<'a, P>> {
+) -> Option<CanvasDrawer<'a>> {
     // get a `CanvasDrawer` for the given `canvas_ref`
     canvas_ref.try_get::<DomNode>().map(|node| {
         let canvas = node.unchecked_into::<HtmlCanvasElement>();
@@ -139,17 +139,17 @@ fn get_canvas_drawer<'a, P: PieceKind + 'static, G: Html>(
     })
 }
 
-pub struct CanvasDrawer<'a, P: PieceKind> {
+pub struct CanvasDrawer<'a> {
     asset_cache: &'a AssetCache,
-    field: &'a DefaultField<P>,
+    field: &'a DefaultField,
     context: CanvasRenderingContext2d,
     skin_name: Rc<String>,
 }
 
-impl<'a, P: PieceKind> CanvasDrawer<'a, P> {
+impl<'a> CanvasDrawer<'a> {
     pub fn new(
         asset_cache: &'a AssetCache,
-        field: &'a DefaultField<P>,
+        field: &'a DefaultField,
         context: CanvasRenderingContext2d,
         skin_name: Rc<String>,
     ) -> Self {
@@ -179,6 +179,8 @@ impl<'a, P: PieceKind> CanvasDrawer<'a, P> {
         ctx.set_font("18px 'IBM Plex Sans'");
         ctx.fill_text("hold", 8.0, 24.0).unwrap();
 
+        // dim the held piece if it cannot be swapped out again
+        ctx.set_global_alpha(if self.field.hold_swapped() { 0.3 } else { 1.0 });
         if let Some(kind) = self.field.hold_piece() {
             self.draw_piece(kind, SIDE_BAR_WIDTH / 2, LABEL_HEIGHT + PIECE_HEIGHT / 2)
         }
@@ -246,7 +248,7 @@ impl<'a, P: PieceKind> CanvasDrawer<'a, P> {
         }
     }
 
-    fn draw_next_queue(&self, bag: &Signal<RefCell<SingleBag<P>>>, queue_len: usize) {
+    fn draw_next_queue(&self, bag: &Signal<RefCell<impl Randomizer>>, queue_len: usize) {
         // total height of queue in pixels
         let nq_h_px = (LABEL_HEIGHT + PIECE_HEIGHT * queue_len + SIDE_BAR_PADDING) as f64;
 
@@ -268,7 +270,7 @@ impl<'a, P: PieceKind> CanvasDrawer<'a, P> {
         util::with_signal_mut_silent(bag, |bag| {
             for (nth, kind) in bag.peek().take(queue_len).enumerate() {
                 self.draw_piece(
-                    *kind,
+                    kind,
                     SIDE_BAR_WIDTH / 2,
                     LABEL_HEIGHT + PIECE_HEIGHT * (nth + 1) - PIECE_HEIGHT / 2,
                 )
@@ -276,7 +278,7 @@ impl<'a, P: PieceKind> CanvasDrawer<'a, P> {
         });
     }
 
-    fn draw_piece(&self, kind: P, x_offset: usize, y_offset: usize) {
+    fn draw_piece(&self, kind: PieceKind, x_offset: usize, y_offset: usize) {
         let base_coords = kind
             .spawn_offsets()
             .into_iter()

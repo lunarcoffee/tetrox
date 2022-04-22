@@ -9,15 +9,15 @@ use sycamore::{
     view::View,
     Prop,
 };
-use tetrox::{field::LineClear, PieceKind};
+use tetrox::field::LineClear;
 
 #[derive(Prop)]
-pub struct StatsProps<'a, P: PieceKind> {
-    last_line_clear: &'a Signal<Option<LineClear<P>>>,
+pub struct StatsProps<'a> {
+    last_line_clear: &'a Signal<Option<LineClear>>,
 }
 
 #[component]
-pub fn Stats<'a, P: PieceKind, G: Html>(cx: Scope<'a>, props: StatsProps<'a, P>) -> View<G> {
+pub fn Stats<'a, G: Html>(cx: Scope<'a>, props: StatsProps<'a>) -> View<G> {
     let (lc_text, lc_view) = styled_text(cx, "clear-text", 0.0, 0.5);
     let (pc_text, pc_view) = styled_text(cx, "clear-text", 0.0, 0.5);
     let (combo_text, combo_view) = styled_text(cx, "combo-text", 0.5, 0.25);

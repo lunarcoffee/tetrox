@@ -8,6 +8,7 @@ use crate::{game::Game, util};
 
 use bimap::BiMap;
 use serde::{Deserialize, Serialize};
+use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use sycamore::{
     component,
@@ -18,6 +19,14 @@ use sycamore::{
     Prop,
 };
 
+use tetrox::{
+    pieces::{
+        mino123::Mino123,
+        tetromino::{SrsKickTable, TetrIo180KickTable, TetrominoSrs},
+        LruKickTable,
+    },
+    KickTable, KickTable180, PieceKind, PieceKindTrait,
+};
 use wasm_bindgen::JsCast;
 use web_sys::{Event, HtmlInputElement, HtmlSelectElement, KeyboardEvent, Storage};
 
@@ -71,10 +80,11 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
                 } }
             }
             gen_config_setter_match! {
-                gravity_delay; GravityDelay, lock_delay; LockDelay, move_limit; MoveLimit, 
-                topping_out_enabled; ToppingOutEnabled, auto_lock_enabled; AutoLockEnabled, 
+                gravity_delay; GravityDelay, lock_delay; LockDelay, move_limit; MoveLimit,
+                topping_out_enabled; ToppingOutEnabled, auto_lock_enabled; AutoLockEnabled,
                 gravity_enabled; GravityEnabled, move_limit_enabled; MoveLimitEnabled, field_width; FieldWidth,
-                queue_len; QueueLen, skin_name; SkinName, field_zoom; FieldZoom, vertical_offset; VerticalOffset,
+                queue_len; QueueLen, piece_type; PieceType, kick_table; KickTable, kick_table_180; KickTable180,
+                skin_name; SkinName, field_zoom; FieldZoom, vertical_offset; VerticalOffset,
                 shadow_opacity; ShadowOpacity, keybinds; Keybinds, delayed_auto_shift; DelayedAutoShift,
                 auto_repeat_rate; AutoRepeatRate, soft_drop_rate; SoftDropRate
             }
@@ -92,15 +102,21 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
         gravity_delay; GravityDelay, lock_delay; LockDelay, move_limit; MoveLimit,
         topping_out_enabled; ToppingOutEnabled, auto_lock_enabled; AutoLockEnabled, gravity_enabled; GravityEnabled,
         move_limit_enabled; MoveLimitEnabled, field_width; FieldWidth, field_hidden; FieldHidden, queue_len; QueueLen,
-        skin_name; SkinName, field_zoom; FieldZoom, vertical_offset; VerticalOffset, shadow_opacity; ShadowOpacity,
-        keybinds; Keybinds, delayed_auto_shift; DelayedAutoShift, auto_repeat_rate; AutoRepeatRate,
-        soft_drop_rate; SoftDropRate
+        piece_type; PieceType, kick_table; KickTable, kick_table_180; KickTable180, skin_name; SkinName,
+        field_zoom; FieldZoom, vertical_offset; VerticalOffset, shadow_opacity; ShadowOpacity, keybinds; Keybinds,
+        delayed_auto_shift; DelayedAutoShift, auto_repeat_rate; AutoRepeatRate, soft_drop_rate; SoftDropRate
     };
 
     let skin_name_items = crate::SKIN_NAMES.iter().map(|n| (*n, n.to_string())).collect();
+    let piece_kind_items = ["tetromino srs", "123mino"]
+        .into_iter()
+        .zip(PieceTypes::iter())
+        .collect();
+    let kick_table_items = ["srs", "lru"].into_iter().zip(KickTables::iter()).collect();
+    let kick_table_180_items = ["tetr.io", "lru"].into_iter().zip(KickTable180s::iter()).collect();
 
     macro_rules! keybind_capture_buttons {
-        ($($label:expr; $input:ident),*) => { view! { cx, 
+        ($($label:expr; $input:ident),*) => { view! { cx,
             div(class="config-button-box") {
                 $(InputCaptureButton { label: $label, input: Input::$input, keybinds })*
             }
@@ -122,10 +138,13 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
                     ToggleButton { label: "Move limit", value: move_limit_enabled }
                 }
 
-                SectionHeading("Board")
+                SectionHeading("Playfield")
                 RangeInput { label: "Field width", min: 4, max: 100, step: 1, value: field_width }
                 RangeInput { label: "Field height", min: 3, max: 100, step: 1, value: field_hidden }
                 RangeInput { label: "Queue length", min: 0, max: 7, step: 1, value: queue_len }
+                SelectInput { label: "Piece kind", items: piece_kind_items, value: piece_type }
+                SelectInput { label: "Kick table", items: kick_table_items, value: kick_table }
+                SelectInput { label: "180 kick table", items: kick_table_180_items, value: kick_table_180 }
 
                 SectionHeading("Visual")
                 SelectInput { label: "Block skin", items: skin_name_items, value: skin_name }
@@ -191,7 +210,7 @@ where
 }
 
 #[derive(Prop)]
-struct SelectInputProps<'a, T: Clone + Display + PartialEq + Eq + 'static> {
+struct SelectInputProps<'a, T: Clone + PartialEq + Eq + 'static> {
     label: &'static str,
     items: Vec<(&'static str, T)>,
     value: &'a Signal<T>,
@@ -200,7 +219,7 @@ struct SelectInputProps<'a, T: Clone + Display + PartialEq + Eq + 'static> {
 #[component]
 fn SelectInput<'a, T, G>(cx: Scope<'a>, props: SelectInputProps<'a, T>) -> View<G>
 where
-    T: Clone + Display + PartialEq + Eq + 'static,
+    T: Clone + PartialEq + Eq + 'static,
     G: Html,
 {
     let SelectInputProps { label, items, value } = props;
@@ -208,7 +227,7 @@ where
 
     view! { cx,
         div(class="config-option") {
-            InputLabel { label, value }
+            p(class="config-option-label") { (label) ":" }
             select(
                 on:input=|e: Event| {
                     let new_label = e.target().unwrap().dyn_into::<HtmlSelectElement>().unwrap().value();
@@ -348,6 +367,9 @@ enum ConfigMsg {
     FieldWidth(usize),
     FieldHidden(usize),
     QueueLen(usize),
+    PieceType(PieceTypes),
+    KickTable(KickTables),
+    KickTable180(KickTable180s),
 
     SkinName(String),
     FieldZoom(f64),
@@ -361,6 +383,54 @@ enum ConfigMsg {
     SoftDropRate(u32),
 
     _ToggleUi,
+}
+
+// all types of `PieceKind`s
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize, EnumIter)]
+pub enum PieceTypes {
+    TetrominoSrs,
+    Mino123,
+}
+
+impl PieceTypes {
+    // get all `PieceKinds` of the `PieceType`
+    pub fn kinds(&self) -> Vec<PieceKind> {
+        match self {
+            PieceTypes::TetrominoSrs => <TetrominoSrs as PieceKindTrait>::iter(),
+            PieceTypes::Mino123 => <Mino123 as PieceKindTrait>::iter(),
+        }
+        .collect()
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize, EnumIter)]
+pub enum KickTables {
+    Srs,
+    Lru,
+}
+
+impl KickTables {
+    pub fn table(&self) -> &dyn KickTable {
+        match self {
+            KickTables::Srs => &SrsKickTable,
+            KickTables::Lru => &LruKickTable,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize, EnumIter)]
+pub enum KickTable180s {
+    TetrIo,
+    Lru,
+}
+
+impl KickTable180s {
+    pub fn table(&self) -> &dyn KickTable180 {
+        match self {
+            KickTable180s::TetrIo => &TetrIo180KickTable,
+            KickTable180s::Lru => &LruKickTable,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, EnumIter)]
@@ -395,6 +465,9 @@ pub struct Config {
     pub field_height: usize,
     pub field_hidden: usize,
     pub queue_len: usize,
+    pub piece_type: PieceTypes,
+    pub kick_table: KickTables,
+    pub kick_table_180: KickTable180s,
 
     // visual settings
     pub skin_name: String,
@@ -444,6 +517,9 @@ impl Default for Config {
             field_height: 40,
             field_hidden: 20,
             queue_len: 5,
+            piece_type: PieceTypes::TetrominoSrs,
+            kick_table: KickTables::Srs,
+            kick_table_180: KickTable180s::TetrIo,
 
             gravity_delay: 1_000,
             lock_delay: 500,

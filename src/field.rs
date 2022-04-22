@@ -1,53 +1,53 @@
 use std::collections::HashSet;
 
-use crate::{Bag, Coords, CoordsFloat, KickTable, KickTable180, PieceKind, RotationState};
+use crate::{Coords, CoordsFloat, KickTable, KickTable180, PieceKind, PieceKindTrait, Randomizer, RotationState};
 
 #[derive(Copy, Clone)]
-pub enum Square<P: PieceKind> {
+pub enum Square {
     Empty,
-    Filled(P),
+    Filled(PieceKind),
 }
 
-impl<P: PieceKind> Square<P> {
+impl Square {
     pub fn is_empty(&self) -> bool { matches!(self, Square::Empty) }
 
     pub fn is_filled(&self) -> bool { matches!(self, Square::Filled(_)) }
 }
 
 #[derive(Clone)]
-pub struct Line<P: PieceKind> {
-    squares: Vec<Square<P>>,
+pub struct Line {
+    squares: Vec<Square>,
 }
 
-impl<P: PieceKind> Line<P> {
+impl Line {
     pub fn new(width: usize) -> Self {
         Line {
             squares: (0..width).map(|_| Square::Empty).collect(),
         }
     }
 
-    pub fn squares(&self) -> &[Square<P>] { &self.squares }
+    pub fn squares(&self) -> &[Square] { &self.squares }
 
     fn is_empty(&self) -> bool { self.squares.iter().all(|s| s.is_empty()) }
 
     // all squares are filled (not empty or solid garbage)
     fn is_clear(&self) -> bool { self.squares.iter().all(|s| s.is_filled()) }
 
-    fn get(&self, i: usize) -> Square<P> { self.squares[i] }
+    fn get(&self, i: usize) -> Square { self.squares[i] }
 
-    fn get_mut(&mut self, i: usize) -> &mut Square<P> { &mut self.squares[i] }
+    fn get_mut(&mut self, i: usize) -> &mut Square { &mut self.squares[i] }
 }
 
 #[derive(Clone)]
-pub struct LineClear<P: PieceKind> {
+pub struct LineClear {
     n_lines: usize,
-    spin: Option<P>,
+    spin: Option<PieceKind>,
     is_mini: bool,
     is_perfect_clear: bool,
 }
 
-impl<P: PieceKind> LineClear<P> {
-    pub fn new(n_lines: usize, spin: Option<P>, is_mini: bool, is_perfect_clear: bool) -> Self {
+impl LineClear {
+    pub fn new(n_lines: usize, spin: Option<PieceKind>, is_mini: bool, is_perfect_clear: bool) -> Self {
         LineClear {
             n_lines,
             spin,
@@ -58,21 +58,21 @@ impl<P: PieceKind> LineClear<P> {
 
     pub fn n_lines(&self) -> usize { self.n_lines }
 
-    pub fn spin(&self) -> Option<P> { self.spin }
+    pub fn spin(&self) -> Option<PieceKind> { self.spin }
 
     pub fn is_mini(&self) -> bool { self.is_mini }
 
     pub fn is_perfect_clear(&self) -> bool { self.is_perfect_clear }
 }
 
-pub struct LivePiece<P: PieceKind> {
-    kind: P,
+pub struct LivePiece {
+    kind: PieceKind,
     coords: Vec<Coords>,
     rotation_state: RotationState,
 }
 
-impl<P: PieceKind> LivePiece<P> {
-    fn new(kind: P, origin: &Coords) -> Self {
+impl LivePiece {
+    fn new(kind: PieceKind, origin: &Coords) -> Self {
         let coords = kind
             .spawn_offsets()
             .into_iter()
@@ -88,11 +88,11 @@ impl<P: PieceKind> LivePiece<P> {
 
     pub fn coords(&self) -> &Vec<Coords> { &self.coords }
 
-    pub fn kind(&self) -> P { self.kind }
+    pub fn kind(&self) -> PieceKind { self.kind }
 
     pub fn rotation_state(&self) -> RotationState { self.rotation_state }
 
-    fn shifted(&self, rows: i32, cols: i32) -> LivePiece<P> {
+    fn shifted(&self, rows: i32, cols: i32) -> LivePiece {
         let coords = self
             .coords
             .iter()
@@ -103,7 +103,7 @@ impl<P: PieceKind> LivePiece<P> {
     }
 
     // these rotations do not use kicks
-    fn rotated_cw(&self) -> LivePiece<P> {
+    fn rotated_cw(&self) -> LivePiece {
         let (pivot_index, offset) = self.kind.pivot_offset(self.rotation_state);
         let pivot = self.coords[pivot_index].to_coords_float() + offset;
 
@@ -122,12 +122,12 @@ impl<P: PieceKind> LivePiece<P> {
         }
     }
 
-    fn rotated_ccw(&self) -> LivePiece<P> { self.rotated_cw().rotated_cw().rotated_cw() }
+    fn rotated_ccw(&self) -> LivePiece { self.rotated_cw().rotated_cw().rotated_cw() }
 
-    fn rotated_180(&self) -> LivePiece<P> { self.rotated_cw().rotated_cw() }
+    fn rotated_180(&self) -> LivePiece { self.rotated_cw().rotated_cw() }
 
     // shadow piece, hard drop position, etc.
-    fn projected_down(&self, field: &DefaultField<P>) -> LivePiece<P> {
+    fn projected_down(&self, field: &DefaultField) -> LivePiece {
         let shifted = self.shifted(1, 0);
         if shifted.is_blocked(Some(&self), field) {
             LivePiece {
@@ -140,7 +140,7 @@ impl<P: PieceKind> LivePiece<P> {
     }
 
     // if the piece being checked has a previous state, `old_piece` should represent that state
-    fn is_blocked(&self, old_piece: Option<&LivePiece<P>>, field: &DefaultField<P>) -> bool {
+    fn is_blocked(&self, old_piece: Option<&LivePiece>, field: &DefaultField) -> bool {
         // make sure the coords are in bounds and are not filled by other pieces
         self.coords.iter().any(|c| {
             !field.coords_in_bounds(&c)
@@ -149,15 +149,15 @@ impl<P: PieceKind> LivePiece<P> {
     }
 }
 
-pub struct DefaultField<P: PieceKind> {
+pub struct DefaultField {
     width: usize,
     height: usize,
     hidden: usize,
 
-    lines: Vec<Line<P>>,
+    lines: Vec<Line>,
 
-    cur_piece: LivePiece<P>,
-    hold_piece: Option<P>,
+    cur_piece: LivePiece,
+    hold_piece: Option<PieceKind>,
     hold_swapped: bool,
 
     topped_out: bool,
@@ -172,8 +172,8 @@ pub struct DefaultField<P: PieceKind> {
     last_move_rotated: bool,
 }
 
-impl<P: PieceKind> DefaultField<P> {
-    pub fn new(width: usize, height: usize, hidden: usize, bag: &mut impl Bag<P>) -> Self {
+impl DefaultField {
+    pub fn new(width: usize, height: usize, hidden: usize, kinds: &[PieceKind], bag: &mut impl Randomizer) -> Self {
         // coordinates of the center (left-aligned) of the bottom-most line of pieces spawned on this field
         // i.e. the coordinates of the @ sign in the following 10-wide field:
         // |    #     |
@@ -182,7 +182,8 @@ impl<P: PieceKind> DefaultField<P> {
         let piece_origin = Coords(hidden as i32 - 2, width as i32 / 2 - 1);
 
         // set of coords where pieces may spawn (used to detect topping out)
-        let spawn_area = P::iter()
+        let spawn_area = kinds
+            .iter()
             .flat_map(|k| k.spawn_offsets().into_iter().map(|c| c + piece_origin))
             .collect();
 
@@ -221,12 +222,12 @@ impl<P: PieceKind> DefaultField<P> {
 
     pub fn hidden(&self) -> usize { self.hidden }
 
-    pub fn lines(&self) -> &[Line<P>] { &self.lines }
+    pub fn lines(&self) -> &[Line] { &self.lines }
 
     // if after clearing lines the board is empty (used to check perfect clears)
     pub fn is_clear(&mut self) -> bool { self.lines.iter().all(|l| l.is_empty() || l.is_clear()) }
 
-    pub fn get_at(&self, coords @ Coords(row, col): &Coords) -> Option<Square<P>> {
+    pub fn get_at(&self, coords @ Coords(row, col): &Coords) -> Option<Square> {
         if self.coords_in_bounds(coords) {
             Some(self.lines[*row as usize].get(*col as usize))
         } else {
@@ -234,17 +235,19 @@ impl<P: PieceKind> DefaultField<P> {
         }
     }
 
-    fn set_at(&mut self, Coords(row, col): &Coords, square: Square<P>) {
+    fn set_at(&mut self, Coords(row, col): &Coords, square: Square) {
         *self.lines[*row as usize].get_mut(*col as usize) = square;
     }
 
     pub fn topped_out(&self) -> bool { self.topped_out }
 
-    pub fn cur_piece(&self) -> &LivePiece<P> { &self.cur_piece }
+    pub fn cur_piece(&self) -> &LivePiece { &self.cur_piece }
 
-    pub fn hold_piece(&self) -> Option<P> { self.hold_piece }
+    pub fn hold_piece(&self) -> Option<PieceKind> { self.hold_piece }
 
-    pub fn shadow_piece(&self) -> LivePiece<P> { self.cur_piece.projected_down(&self) }
+    pub fn hold_swapped(&self) -> bool { self.hold_swapped }
+
+    pub fn shadow_piece(&self) -> LivePiece { self.cur_piece.projected_down(&self) }
 
     pub fn actions_since_lock_delay(&self) -> Option<usize> { self.lock_delay_actions }
 
@@ -275,21 +278,21 @@ impl<P: PieceKind> DefaultField<P> {
         self.update_lock_delay(action)
     }
 
-    pub fn try_rotate_cw(&mut self, kick_table: &impl KickTable<P>) -> bool {
+    pub fn try_rotate_cw(&mut self, kick_table: &dyn KickTable) -> bool {
         let kicks = kick_table.rotate_cw(self.cur_piece.kind(), self.cur_piece.rotation_state());
         let rotated = self.cur_piece.rotated_cw();
         self.last_move_rotated = self.try_rotate_with_kicks(kicks, rotated);
         self.update_lock_delay(self.last_move_rotated)
     }
 
-    pub fn try_rotate_ccw(&mut self, kick_table: &impl KickTable<P>) -> bool {
+    pub fn try_rotate_ccw(&mut self, kick_table: &dyn KickTable) -> bool {
         let kicks = kick_table.rotate_ccw(self.cur_piece.kind(), self.cur_piece.rotation_state());
         let rotated = self.cur_piece.rotated_ccw();
         self.last_move_rotated = self.try_rotate_with_kicks(kicks, rotated);
         self.update_lock_delay(self.last_move_rotated)
     }
 
-    pub fn try_rotate_180(&mut self, kick_table: &impl KickTable180<P>) -> bool {
+    pub fn try_rotate_180(&mut self, kick_table: &dyn KickTable180) -> bool {
         let kicks = kick_table.rotate_180(self.cur_piece.kind(), self.cur_piece.rotation_state());
         let rotated = self.cur_piece.rotated_180();
         self.last_move_rotated = self.try_rotate_with_kicks(kicks, rotated);
@@ -297,7 +300,7 @@ impl<P: PieceKind> DefaultField<P> {
     }
 
     // tries kicks on a rotated piece, swapping with the current piece if one fits
-    fn try_rotate_with_kicks(&mut self, kicks: Vec<Coords>, rotated: LivePiece<P>) -> bool {
+    fn try_rotate_with_kicks(&mut self, kicks: Vec<Coords>, rotated: LivePiece) -> bool {
         kicks
             .into_iter()
             .map(|kick| (rotated.shifted(kick.0, kick.1), kick)) // apply kick to rotated piece
@@ -315,7 +318,7 @@ impl<P: PieceKind> DefaultField<P> {
 
     // tries to spawn a new piece using the provided bag, without erasing the current piece
     // behaves like locking the current piece and spawning a new one
-    pub fn try_spawn_no_erase(&mut self, bag: &mut impl Bag<P>) -> bool {
+    pub fn try_spawn_no_erase(&mut self, bag: &mut impl Randomizer) -> bool {
         let kind = bag.next();
         let new_piece = LivePiece::new(kind, &self.piece_origin);
 
@@ -329,12 +332,12 @@ impl<P: PieceKind> DefaultField<P> {
 
     // same as `try_spawn_no_erase` but erases the current piece
     // behaves like swapping out a hold piece
-    pub fn try_spawn(&mut self, bag: &mut impl Bag<P>) -> bool {
+    pub fn try_spawn(&mut self, bag: &mut impl Randomizer) -> bool {
         let kind = bag.next();
         self.try_update_cur_piece(LivePiece::new(kind, &self.piece_origin))
     }
 
-    pub fn swap_hold_piece(&mut self, bag: &mut impl Bag<P>) {
+    pub fn swap_hold_piece(&mut self, bag: &mut impl Randomizer) {
         if !self.hold_swapped {
             self.last_cur_piece_kick = None;
             self.hold_swapped = true;
@@ -360,7 +363,7 @@ impl<P: PieceKind> DefaultField<P> {
         self.try_update_cur_piece(projected)
     }
 
-    pub fn hard_drop(&mut self, bag: &mut impl Bag<P>) -> LineClear<P> {
+    pub fn hard_drop(&mut self, bag: &mut impl Randomizer) -> LineClear {
         self.hold_swapped = false;
         self.lock_delay_actions = None;
 
@@ -382,7 +385,7 @@ impl<P: PieceKind> DefaultField<P> {
             || coords.iter().any(|c| self.spawn_area.contains(c))
     }
 
-    pub fn clear_lines(&mut self) -> LineClear<P> {
+    pub fn clear_lines(&mut self) -> LineClear {
         let uncleared_lines = self
             .lines
             .iter()
@@ -400,13 +403,13 @@ impl<P: PieceKind> DefaultField<P> {
         clear_type
     }
 
-    pub fn line_clear_type(&mut self, n_cleared: usize) -> LineClear<P> {
+    pub fn line_clear_type(&mut self, n_cleared: usize) -> LineClear {
         let (spin, is_mini) = self.cur_piece.kind().detect_spin(&self);
         LineClear::new(n_cleared, spin, is_mini, self.is_clear())
     }
 
     // changes and redraws the current piece if the new piece isn't blocked
-    fn try_update_cur_piece(&mut self, new_piece: LivePiece<P>) -> bool {
+    fn try_update_cur_piece(&mut self, new_piece: LivePiece) -> bool {
         let blocked = new_piece.is_blocked(Some(&self.cur_piece), &self);
         if !blocked {
             self.erase_cur_piece();
@@ -422,7 +425,7 @@ impl<P: PieceKind> DefaultField<P> {
         }
     }
 
-    fn draw_piece(&mut self, piece: &LivePiece<P>) {
+    fn draw_piece(&mut self, piece: &LivePiece) {
         for coords in piece.coords() {
             self.set_at(coords, Square::Filled(piece.kind()));
         }

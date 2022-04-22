@@ -1,6 +1,6 @@
 use crate::{
     canvas::{self, Field, HoldPiece, NextQueue},
-    config::{Config, Input},
+    config::{Config, Input, PieceTypes},
     stats::Stats,
     util,
 };
@@ -18,34 +18,47 @@ use sycamore::{
     },
     view,
     view::View,
+    Prop,
 };
 use tetrox::{
     field::{DefaultField, LineClear},
-    tetromino::{SrsKickTable, SrsTetromino, TetrIo180KickTable},
-    PieceKind, SingleBag,
+    pieces::tetromino::{SrsKickTable, TetrIo180KickTable, TetrominoSrs},
+    PieceKindTrait, Randomizer, SingleBag,
 };
 use wasm_bindgen::JsCast;
 use web_sys::{Event, HtmlImageElement, KeyboardEvent};
 
+#[derive(Prop)]
+pub struct BoardProps<'a> {
+    piece_type: &'a ReadSignal<PieceTypes>,
+}
+
 #[component]
-pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
+pub fn Board<'a, G: Html>(cx: Scope<'a>, props: BoardProps<'a>) -> View<G> {
     let config = use_context::<Signal<RefCell<Config>>>(cx);
     let c = config.get();
     let c = c.borrow();
 
-    let mut bag = SingleBag::<P>::new();
-    let field = DefaultField::new(c.field_width, c.field_height, c.field_hidden, &mut bag);
+    let piece_kinds = props.piece_type.get().kinds();
+    let mut bag = SingleBag::new(piece_kinds.clone());
+    let field = DefaultField::new(c.field_width, c.field_height, c.field_hidden, &piece_kinds, &mut bag);
     let field_signal = create_signal(cx, RefCell::new(field));
     provide_context_ref(cx, field_signal);
 
-    // prop for next queue
+    let piece_kinds = props.piece_type.map(cx, |t| t.kinds());
     let bag = create_signal(cx, RefCell::new(bag));
+
+    create_effect(cx, || {
+        bag.set(RefCell::new(SingleBag::new((*piece_kinds.get()).clone())))
+    });
 
     // update field on field dimension config option updates
     let field_dims = util::create_config_selector(cx, config, |c| (c.field_width, c.field_height, c.field_hidden));
     create_effect(cx, || {
         let (width, height, hidden) = *field_dims.get();
-        let new_field = util::with_signal_mut_untracked(bag, |bag| DefaultField::new(width, height, hidden, bag));
+        let new_field = util::with_signal_mut_untracked(bag, |bag| {
+            DefaultField::new(width, height, hidden, &*piece_kinds.get_untracked(), bag)
+        });
         field_signal.set(RefCell::new(new_field));
     });
 
@@ -69,9 +82,9 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
         ($rows:expr, $cols:expr, $delay:expr) => {
             $delay.map(cx, |delay| {
                 if *delay == 0 {
-                    |field: &mut DefaultField<P>| while field.try_shift($rows, $cols) {}
+                    |field: &mut DefaultField| while field.try_shift($rows, $cols) {}
                 } else {
-                    |field: &mut DefaultField<P>| drop(field.try_shift($rows, $cols))
+                    |field: &mut DefaultField| drop(field.try_shift($rows, $cols))
                 }
             })
         };
@@ -82,7 +95,7 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
     let soft_drop_action = loop_timer_shift_action!(1, 0, sdr);
 
     // timer loop executing an action on an interval
-    let loop_timer = |delay: &'a ReadSignal<u32>, input, action: &'a ReadSignal<fn(&mut DefaultField<P>)>| {
+    let loop_timer = |delay: &'a ReadSignal<u32>, input, action: &'a ReadSignal<fn(&mut DefaultField)>| {
         // derive timer from looping interval
         let timer = delay.map(cx, move |d| Timer::new(cx, *d));
 
@@ -100,7 +113,7 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
     };
 
     // timer loop executing an action on an interval after an initial buffer timeout
-    let buffered_loop_timer = |delays: &'a ReadSignal<_>, input, action: &'a ReadSignal<fn(&mut DefaultField<P>)>| {
+    let buffered_loop_timer = |delays: &'a ReadSignal<_>, input, action: &'a ReadSignal<fn(&mut DefaultField)>| {
         // derive timers from buffer and loop durations
         let buffer_timer = delays.map(cx, move |(b, _)| Timer::new(cx, *b));
         let loop_timer = loop_timer(delays.map(cx, |d| d.1), input, action);
@@ -123,7 +136,7 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
     let soft_drop_timer = loop_timer(sdr, Input::SoftDrop, soft_drop_action);
 
     // previous line clear type (used for stats)
-    let last_line_clear = create_signal(cx, None::<LineClear<P>>);
+    let last_line_clear = create_signal(cx, None::<LineClear>);
 
     let keydown_handler = |e: Event| {
         let e = e.dyn_into::<KeyboardEvent>().unwrap();
@@ -148,9 +161,9 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
                     Input::Left => shift_and_start_timer(0, -1, left_timer),
                     Input::Right => shift_and_start_timer(0, 1, right_timer),
                     Input::SoftDrop => shift_and_start_timer(1, 0, soft_drop_timer),
-                    Input::RotateCw => drop(field.try_rotate_cw(&SrsKickTable)),
-                    Input::RotateCcw => drop(field.try_rotate_ccw(&SrsKickTable)),
-                    Input::Rotate180 => drop(field.try_rotate_180(&TetrIo180KickTable)),
+                    Input::RotateCw => drop(field.try_rotate_cw(c.kick_table.table())),
+                    Input::RotateCcw => drop(field.try_rotate_ccw(c.kick_table.table())),
+                    Input::Rotate180 => drop(field.try_rotate_180(c.kick_table_180.table())),
                     Input::SwapHold => util::with_signal_mut_silent(bag, |bag| field.swap_hold_piece(bag)),
                     _ => {}
                 }
@@ -160,8 +173,9 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
                 // handle game resetting separately as `with_signal_mut` will replace the new field with the old one
                 // after the closure executes
                 Input::Reset => {
-                    let mut new_bag = SingleBag::new();
-                    let field = DefaultField::new(c.field_width, c.field_height, c.field_hidden, &mut new_bag);
+                    let kinds = piece_kinds.get();
+                    let mut new_bag = SingleBag::new((*kinds).clone());
+                    let field = DefaultField::new(c.field_width, c.field_height, c.field_hidden, &*kinds, &mut new_bag);
 
                     field_signal.set(RefCell::new(field));
                     bag.set(RefCell::new(new_bag));
@@ -254,10 +268,10 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
     view! { cx,
         div(class="game", tabindex="0", style=game_style.get(), on:keydown=keydown_handler, on:keyup=keyup_handler) {
             div(class="field-panel") {
-                div(class="hold-piece") { HoldPiece::<P, G> {} }
+                div(class="hold-piece") { HoldPiece {} }
                 div(class="game-stats") { Stats { last_line_clear } }
             }
-            div(class="field") { Field::<P, G> {} }
+            div(class="field") { Field {} }
             div(class="next-queue") { NextQueue { bag } }
         }
     }
@@ -266,7 +280,7 @@ pub fn Board<'a, P: PieceKind + 'static, G: Html>(cx: Scope<'a>) -> View<G> {
 pub type AssetCache = HashMap<String, HtmlImageElement>;
 
 fn make_asset_cache() -> AssetCache {
-    <SrsTetromino as PieceKind>::iter()
+    <TetrominoSrs as PieceKindTrait>::iter()
         .map(|k| k.asset_name().to_string())
         .chain(["grey".to_string()])
         .flat_map(|asset_name| {
@@ -291,10 +305,10 @@ fn create_timer_finish_effect<'a>(cx: Scope<'a>, timer: &'a ReadSignal<Timer>, m
     });
 }
 
-fn hard_drop<P: PieceKind>(
-    field: &Signal<RefCell<DefaultField<P>>>,
-    bag: &Signal<RefCell<SingleBag<P>>>,
-    last_line_clear: &Signal<Option<LineClear<P>>>,
+fn hard_drop(
+    field: &Signal<RefCell<DefaultField>>,
+    bag: &Signal<RefCell<impl Randomizer>>,
+    last_line_clear: &Signal<Option<LineClear>>,
 ) {
     util::with_signal_mut_untracked(field, |field| {
         util::with_signal_mut_silent_untracked(bag, |bag| last_line_clear.set(Some(field.hard_drop(bag))))
