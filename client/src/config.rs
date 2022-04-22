@@ -145,12 +145,14 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
                 SelectInput { label: "Piece kind", items: piece_kind_items, value: piece_type }
                 SelectInput { label: "Kick table", items: kick_table_items, value: kick_table }
                 SelectInput { label: "180 kick table", items: kick_table_180_items, value: kick_table_180 }
+                Padding(4)
 
                 SectionHeading("Visual")
-                SelectInput { label: "Block skin", items: skin_name_items, value: skin_name }
                 RangeInput { label: "Field zoom", min: 0.1, max: 4.0, step: 0.05, value: field_zoom }
                 RangeInput { label: "Vertical offset", min: -2_000, max: 2_000, step: 10, value: vertical_offset }
                 RangeInput { label: "Shadow opacity", min: 0.0, max: 1.0, step: 0.05, value: shadow_opacity }
+                SelectInput { label: "Block skin", items: skin_name_items, value: skin_name }
+                Padding(4)
 
                 SectionHeading("Keybinds")
                 (keybind_capture_buttons! {
@@ -227,7 +229,7 @@ where
 
     view! { cx,
         div(class="config-option") {
-            p(class="config-option-label") { (label) ":" }
+            label(class="config-option-label") { (label) ":" }
             select(
                 on:input=|e: Event| {
                     let new_label = e.target().unwrap().dyn_into::<HtmlSelectElement>().unwrap().value();
@@ -332,8 +334,13 @@ struct InputLabelProps<'a, T: Display + 'static> {
 }
 
 #[component]
-fn InputLabel<'a, G: Html, T: Display + 'static>(cx: Scope<'a>, props: InputLabelProps<'a, T>) -> View<G> {
+fn InputLabel<'a, T: Display + 'static, G: Html>(cx: Scope<'a>, props: InputLabelProps<'a, T>) -> View<G> {
     view! { cx, p(class="config-option-label") { (props.label) " (" (props.value.get()) "):" } }
+}
+
+#[component]
+fn Padding<'a, G: Html>(cx: Scope<'a>, px: usize) -> View<G> {
+    view! { cx, div(style=format!("min-height: {}px;", px)) }
 }
 
 #[derive(Clone)]

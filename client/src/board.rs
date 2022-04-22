@@ -22,7 +22,7 @@ use sycamore::{
 };
 use tetrox::{
     field::{DefaultField, LineClear},
-    pieces::tetromino::{SrsKickTable, TetrIo180KickTable, TetrominoSrs},
+    pieces::tetromino::TetrominoSrs,
     PieceKindTrait, Randomizer, SingleBag,
 };
 use wasm_bindgen::JsCast;

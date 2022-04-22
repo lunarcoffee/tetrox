@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::{Coords, CoordsFloat, KickTable, KickTable180, PieceKind, PieceKindTrait, Randomizer, RotationState};
+use crate::{Coords, CoordsFloat, KickTable, KickTable180, PieceKind, Randomizer, RotationState};
 
 #[derive(Copy, Clone)]
 pub enum Square {

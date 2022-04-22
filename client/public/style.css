@@ -37,21 +37,6 @@ body {
     display: none;
 }
 
-.link {
-    color: #d4d4d4;
-    text-decoration: none;
-
-    transition: color 0.1s;
-}
-
-.link:hover {
-    color: #c9c9c9;
-}
-
-.link:active {
-    color: #b8b8b8;
-}
-
 .content {
     height: 100vh;
     width: 100vw;
@@ -74,15 +59,15 @@ body {
 .config-panel {
     color: #ccc;
 
-    mask-image: linear-gradient(to bottom, transparent 0%, black 40px, black calc(100% - 40px), transparent 100%);
-    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 40px, black calc(100% - 40px), transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, black 32px, black calc(100% - 32px), transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 32px, black calc(100% - 32px), transparent 100%);
 
     justify-self: flex-end;
     text-align: right;
 
-    padding: 16px 28px 28px 5vw;
+    padding: 12px 28px 12px 5vw;
     width: 16vw;
-    height: calc(100vh - 40px);
+    height: calc(100vh - 24px);
 
     position: fixed;
     top: 0;
@@ -101,37 +86,37 @@ body {
 }
 
 .config-heading {
-    color: #f1f1f1;
+    color: #ddd;
     font-family: "Roboto Condensed";
 
-    font-size: 1.15rem;
+    font-size: 1.05rem;
     font-weight: bold;
 
     margin: 14px 0;
 }
 
 .config-option-label {
-    font-size: 0.9rem;
+    font-size: 0.8rem;
     margin: 0;
 }
 
 .config-option>select {
-    background-color: #f3f3f3cc;
+    background-color: #f3f3f399;
     border: none;
     border-radius: 4px;
 
     padding: 2px 6px;
-    margin: 6px 0 14px 0;
+    margin: 3px 0 1px 6px;
 
     transition: background-color 0.1s;
 }
 
 .config-option>select:hover {
-    background-color: #e0e0e0cc;
+    background-color: #e0e0e099;
 }
 
 .config-option>input[type=button] {
-    background-color: #f3f3f3cc;
+    background-color: #f3f3f399;
     border: none;
     border-radius: 4px;
 
@@ -142,11 +127,11 @@ body {
 }
 
 .config-option>input[type=button]:hover {
-    background-color: #e0e0e0cc;
+    background-color: #e0e0e099;
 }
 
 .config-option>input[type=button]:active {
-    background-color: #d1d1d1cc;
+    background-color: #d1d1d199;
 }
 
 .config-button-box {

@@ -5,7 +5,7 @@
 pub mod field;
 pub mod pieces;
 
-use std::{collections::hash_map::RandomState, mem, ops};
+use std::{mem, ops};
 
 use field::DefaultField;
 use num_derive::{FromPrimitive, ToPrimitive};
