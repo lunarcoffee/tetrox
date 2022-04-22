@@ -2,7 +2,7 @@
 
 use crate::config::ConfigPanel;
 use sycamore::{component, generic_node::Html, prelude::Scope, reactive, view, view::View};
-use tetrox::{pieces::tetromino::TetrominoSrs, PieceKindTrait};
+use tetrox::pieces::{tetromino::TetrominoSrs, PieceKindTrait};
 
 mod board;
 mod canvas;

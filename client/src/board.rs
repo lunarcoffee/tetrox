@@ -22,8 +22,8 @@ use sycamore::{
 };
 use tetrox::{
     field::{DefaultField, LineClear},
-    pieces::tetromino::TetrominoSrs,
-    PieceKindTrait, Randomizer, SingleBag,
+    pieces::{tetromino::TetrominoSrs, PieceKindTrait},
+    Randomizer, SingleBag,
 };
 use wasm_bindgen::JsCast;
 use web_sys::{Event, HtmlImageElement, KeyboardEvent};

@@ -1,12 +1,10 @@
-use std::ops;
-
 use num_traits::ToPrimitive;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
-use crate::{
-    field::DefaultField, Coords, CoordsFloat, KickTable, KickTable180, PieceKind, PieceKindTrait, RotationState,
-};
+use crate::{field::DefaultField, Coords, CoordsFloat, PieceKind, kicks::RotationState};
+
+use super::PieceKindTrait;
 
 #[derive(Copy, Clone, Debug, EnumIter, PartialEq, Eq, Hash)]
 pub enum TetrominoSrs {
@@ -168,55 +166,4 @@ impl PieceKindTrait for TetrominoAsc {
     }
 
     fn n_kinds() -> usize { 7 }
-}
-
-pub struct SrsKickTable;
-
-impl KickTable for SrsKickTable {
-    fn rotate_cw(&self, piece: PieceKind, rotation_state: RotationState) -> Vec<Coords> {
-        match piece {
-            PieceKind::TetrominoSrs(p @ (TetrominoSrs::O | TetrominoSrs::I)) => match p {
-                TetrominoSrs::O => vec![(0, 0)],
-                _ => match rotation_state {
-                    RotationState::Initial => vec![(0, 0), (0, -2), (0, 1), (1, -2), (-2, 1)],
-                    RotationState::Cw => vec![(0, 0), (0, -1), (0, 2), (-2, -1), (1, 2)],
-                    RotationState::Flipped => vec![(0, 0), (0, 2), (0, -1), (-1, 2), (2, -1)],
-                    RotationState::Ccw => vec![(0, 0), (0, 1), (0, -2), (2, 1), (-1, -2)],
-                },
-            },
-            _ => match rotation_state {
-                RotationState::Initial => vec![(0, 0), (0, -1), (-1, -1), (2, 0), (2, -1)],
-                RotationState::Cw => vec![(0, 0), (0, 1), (1, 1), (-2, 0), (-2, 1)],
-                RotationState::Flipped => vec![(0, 0), (0, 1), (-1, 1), (2, 0), (2, 1)],
-                RotationState::Ccw => vec![(0, 0), (0, -1), (1, -1), (-2, 0), (-2, -1)],
-            },
-        }
-        .into_iter()
-        .map(|(row_shift, col_shift)| Coords(row_shift, col_shift))
-        .collect::<Vec<_>>()
-    }
-
-    fn rotate_ccw(&self, piece: PieceKind, rotation_state: RotationState) -> Vec<Coords> {
-        self.rotate_cw(piece, rotation_state.next_ccw())
-            .into_iter()
-            .map(ops::Neg::neg)
-            .collect()
-    }
-}
-
-// 180 rotate kick table from tetr.io
-pub struct TetrIo180KickTable;
-
-impl KickTable180 for TetrIo180KickTable {
-    fn rotate_180(&self, _: PieceKind, rotation_state: RotationState) -> Vec<Coords> {
-        match rotation_state {
-            RotationState::Initial => vec![(0, 0), (-1, 0), (-1, 1), (-1, -1), (0, 1), (0, -1)],
-            RotationState::Cw => vec![(0, 0), (0, 1), (-2, 1), (-1, 1), (-2, 0), (-1, 0)],
-            RotationState::Flipped => vec![(0, 0), (1, 0), (1, -1), (1, 1), (0, -1), (0, 1)],
-            RotationState::Ccw => vec![(0, 0), (0, -1), (-2, -1), (-1, -1), (-2, 0), (-1, 0)],
-        }
-        .into_iter()
-        .map(|(row_shift, col_shift)| Coords(row_shift, col_shift))
-        .collect::<Vec<_>>()
-    }
 }

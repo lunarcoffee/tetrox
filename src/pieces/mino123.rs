@@ -1,7 +1,9 @@
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
-use crate::{field::DefaultField, Coords, CoordsFloat, PieceKind, PieceKindTrait, RotationState};
+use crate::{field::DefaultField, Coords, CoordsFloat, PieceKind};
+
+use super::{PieceKindTrait, RotationState};
 
 #[derive(Copy, Clone, Debug, EnumIter, PartialEq, Eq, Hash)]
 pub enum Mino123 {

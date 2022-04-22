@@ -1,6 +1,6 @@
-use crate::{field::DefaultField, Coords, CoordsFloat, PieceKind, PieceKindTrait, RotationState};
+use crate::{field::DefaultField, Coords, CoordsFloat, PieceKind};
 
-use super::{mino123::Mino123, tetromino::TetrominoSrs};
+use super::{mino123::Mino123, tetromino::TetrominoSrs, RotationState, PieceKindTrait};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Mino1234 {

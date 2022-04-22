@@ -20,12 +20,13 @@ use sycamore::{
 };
 
 use tetrox::{
+    kicks::{AscKickTable, BasicKickTable, KickTable, KickTable180, SrsKickTable, TetrIo180KickTable},
     pieces::{
         mino123::Mino123,
-        tetromino::{SrsKickTable, TetrIo180KickTable, TetrominoAsc, TetrominoSrs},
-        AscKickTable, BasicKickTable, mino1234::Mino1234,
+        mino1234::Mino1234,
+        tetromino::{TetrominoAsc, TetrominoSrs},
+        PieceKind, PieceKindTrait,
     },
-    KickTable, KickTable180, PieceKind, PieceKindTrait,
 };
 use wasm_bindgen::JsCast;
 use web_sys::{Event, HtmlInputElement, HtmlSelectElement, KeyboardEvent, Storage};

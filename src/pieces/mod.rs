@@ -1,47 +1,60 @@
-use crate::{Coords, KickTable, KickTable180, PieceKind, RotationState};
+use crate::{Coords, CoordsFloat, field::DefaultField, kicks::RotationState};
+
+use self::{tetromino::{TetrominoSrs, TetrominoAsc}, mino123::Mino123, mino1234::Mino1234};
 
 pub mod mino123;
 pub mod tetromino;
 pub mod mino1234;
-// pub mod mino1234;
 
-// kicks left, right, or up by one square
-pub struct BasicKickTable;
+pub trait PieceKindTrait {
+    // coords of the squares composing the piece relative to the spawn coords
+    fn spawn_offsets(&self) -> Vec<Coords>;
 
-impl KickTable for BasicKickTable {
-    fn rotate_cw(&self, _: PieceKind, _: RotationState) -> Vec<Coords> {
-        vec![Coords(0, 0), Coords(0, -1), Coords(0, 1), Coords(-1, 0)]
-    }
+    // index of the rotation pivot of the piece with a possibly zero offset
+    // pieces like the i tetromino have apparent pivots that intersect
+    fn pivot_offset(&self, rotation_state: RotationState) -> (usize, CoordsFloat);
 
-    fn rotate_ccw(&self, piece: PieceKind, rotation_state: RotationState) -> Vec<Coords> {
-        self.rotate_cw(piece, rotation_state)
-    }
+    // returns the type of spin after a hard drop (if any) and whether it is mini
+    fn detect_spin(&self, field: &DefaultField) -> (Option<PieceKind>, bool);
+
+    fn asset_name(&self) -> &str;
+
+    // iterator through all piece kinds
+    fn iter() -> Box<dyn Iterator<Item = PieceKind>>;
+
+    fn n_kinds() -> usize;
 }
 
-impl KickTable180 for BasicKickTable {
-    fn rotate_180(&self, piece: PieceKind, rotation_state: RotationState) -> Vec<Coords> {
-        self.rotate_cw(piece, rotation_state)
-    }
+// a piece kind (e.g. t tetromino (srs), domino, l tromino)
+// not a trait to avoid trait objects as this type is used in relatively large numbers
+#[derive(Copy, Clone, Debug)]
+pub enum PieceKind {
+    TetrominoSrs(TetrominoSrs),
+    TetrominoAsc(TetrominoAsc),
+    Mino123(Mino123),
+    Mino1234(Mino1234),
 }
 
-// ascension kick table
-pub struct AscKickTable;
+// generate match statement over all `PieceKind`s that calls a method, optionally with arguments
+macro_rules! gen_piece_kind_match {
+    ($self:ident, $method:ident $(,)? $($arg:expr),*) => { match $self {
+        PieceKind::TetrominoSrs(p) => p.$method($($arg,)*),
+        PieceKind::TetrominoAsc(p) => p.$method($($arg,)*),
+        PieceKind::Mino123(p) => p.$method($($arg,)*),
+        PieceKind::Mino1234(p) => p.$method($($arg,)*),
+    } }
+}
 
-impl KickTable for AscKickTable {
-    fn rotate_cw(&self, piece: PieceKind, rotation_state: RotationState) -> Vec<Coords> {
-        self.rotate_ccw(piece, rotation_state)
-            .into_iter()
-            .map(|k| Coords(k.0, -k.1))
-            .collect()
+impl PieceKind {
+    pub fn spawn_offsets(&self) -> Vec<Coords> { gen_piece_kind_match!(self, spawn_offsets) }
+
+    pub fn pivot_offset(&self, rotation_state: RotationState) -> (usize, CoordsFloat) {
+        gen_piece_kind_match!(self, pivot_offset, rotation_state)
     }
 
-    fn rotate_ccw(&self, _: PieceKind, _: RotationState) -> Vec<Coords> {
-        let right = [(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1), (0, 2), (1, 2), (2, 2)];
-        let left = [(0, -1), (1, -1), (-1, 0), (-1, 1), (-1, 2), (2, -1), (0, -2), (-2, 0)];
-        let other = [(-2, 1), (-2, 2), (1, -2), (2, -2), (-1, -1)];
-        let kicks = right.into_iter().chain(left).chain(other);
-        kicks
-            .map(|(row_shift, col_shift)| Coords(row_shift, col_shift))
-            .collect()
+    pub fn detect_spin(&self, field: &DefaultField) -> (Option<Self>, bool) {
+        gen_piece_kind_match!(self, detect_spin, field)
     }
+
+    pub fn asset_name(&self) -> &str { gen_piece_kind_match!(self, asset_name) }
 }

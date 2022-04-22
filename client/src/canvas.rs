@@ -10,7 +10,7 @@ use sycamore::{
 };
 use tetrox::{
     field::{DefaultField, Square},
-    Coords, PieceKind, Randomizer,
+    Coords, Randomizer, pieces::PieceKind,
 };
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
