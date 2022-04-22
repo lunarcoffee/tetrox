@@ -58,7 +58,6 @@ impl PieceKindTrait for TetrominoSrs {
     fn detect_spin(&self, field: &DefaultField) -> (Option<PieceKind>, bool) {
         let piece = field.cur_piece();
         if let kind @ PieceKind::TetrominoSrs(TetrominoSrs::T) = piece.kind() {
-            // TODO: other ts
             if field.last_move_rotated() {
                 let center = piece.coords()[1];
                 let mut corner_offsets = vec![(-1, -1), (-1, 1), (1, 1), (1, -1)];
@@ -113,6 +112,64 @@ impl PieceKindTrait for TetrominoSrs {
     fn n_kinds() -> usize { 7 }
 }
 
+#[derive(Copy, Clone, Debug, EnumIter, PartialEq, Eq, Hash)]
+pub enum TetrominoAsc {
+    S,
+    Z,
+    L,
+    J,
+    T,
+    O,
+    I,
+}
+
+impl TetrominoAsc {
+    fn to_srs(&self) -> TetrominoSrs {
+        match self {
+            TetrominoAsc::S => TetrominoSrs::S,
+            TetrominoAsc::Z => TetrominoSrs::Z,
+            TetrominoAsc::L => TetrominoSrs::L,
+            TetrominoAsc::J => TetrominoSrs::J,
+            TetrominoAsc::T => TetrominoSrs::T,
+            TetrominoAsc::O => TetrominoSrs::O,
+            TetrominoAsc::I => TetrominoSrs::I,
+        }
+    }
+}
+
+impl PieceKindTrait for TetrominoAsc {
+    fn spawn_offsets(&self) -> Vec<Coords> { self.to_srs().spawn_offsets() }
+
+    fn pivot_offset(&self, rotation_state: RotationState) -> (usize, CoordsFloat) {
+        match self {
+            TetrominoAsc::O => (0, CoordsFloat::zero()),
+            TetrominoAsc::I => (1, CoordsFloat::zero()),
+            _ => self.to_srs().pivot_offset(rotation_state),
+        }
+    }
+
+    // TODO: make this work lol
+    fn detect_spin(&self, field: &DefaultField) -> (Option<PieceKind>, bool) { self.to_srs().detect_spin(field) }
+
+    fn asset_name(&self) -> &str {
+        match self {
+            TetrominoAsc::S => "s",
+            TetrominoAsc::Z => "z",
+            TetrominoAsc::L => "l",
+            TetrominoAsc::J => "j",
+            TetrominoAsc::T => "t",
+            TetrominoAsc::O => "o",
+            TetrominoAsc::I => "i",
+        }
+    }
+
+    fn iter() -> Box<dyn Iterator<Item = PieceKind>> {
+        Box::new(<Self as IntoEnumIterator>::iter().map(|p| PieceKind::TetrominoAsc(p)))
+    }
+
+    fn n_kinds() -> usize { 7 }
+}
+
 pub struct SrsKickTable;
 
 impl KickTable for SrsKickTable {
@@ -120,13 +177,12 @@ impl KickTable for SrsKickTable {
         match piece {
             PieceKind::TetrominoSrs(p @ (TetrominoSrs::O | TetrominoSrs::I)) => match p {
                 TetrominoSrs::O => vec![(0, 0)],
-                TetrominoSrs::I => match rotation_state {
+                _ => match rotation_state {
                     RotationState::Initial => vec![(0, 0), (0, -2), (0, 1), (1, -2), (-2, 1)],
                     RotationState::Cw => vec![(0, 0), (0, -1), (0, 2), (-2, -1), (1, 2)],
                     RotationState::Flipped => vec![(0, 0), (0, 2), (0, -1), (-1, 2), (2, -1)],
                     RotationState::Ccw => vec![(0, 0), (0, 1), (0, -2), (2, 1), (-1, -2)],
                 },
-                _ => unreachable!(),
             },
             _ => match rotation_state {
                 RotationState::Initial => vec![(0, 0), (0, -1), (-1, -1), (2, 0), (2, -1)],

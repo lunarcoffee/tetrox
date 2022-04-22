@@ -11,7 +11,7 @@ mod game;
 mod stats;
 mod util;
 
-pub const SKIN_NAMES: &[&str] = &["tetrox", "gradient", "inset", "rounded", "solid"];
+pub const SKIN_NAMES: &[&str] = &["tetrox", "gradient", "inset", "rounded", "tetrio", "solid"];
 
 #[component]
 fn AssetPreloader<'a, G: Html>(cx: Scope<'a>) -> View<G> {

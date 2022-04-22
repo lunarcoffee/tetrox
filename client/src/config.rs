@@ -22,8 +22,8 @@ use sycamore::{
 use tetrox::{
     pieces::{
         mino123::Mino123,
-        tetromino::{SrsKickTable, TetrIo180KickTable, TetrominoSrs},
-        LruKickTable,
+        tetromino::{SrsKickTable, TetrIo180KickTable, TetrominoAsc, TetrominoSrs},
+        AscKickTable, BasicKickTable, mino1234::Mino1234,
     },
     KickTable, KickTable180, PieceKind, PieceKindTrait,
 };
@@ -107,13 +107,16 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
         delayed_auto_shift; DelayedAutoShift, auto_repeat_rate; AutoRepeatRate, soft_drop_rate; SoftDropRate
     };
 
-    let skin_name_items = crate::SKIN_NAMES.iter().map(|n| (*n, n.to_string())).collect();
-    let piece_kind_items = ["tetromino srs", "123mino"]
+    let skin_name_items = ["Tetrox", "Gradient", "Inset", "Cirxel", "TETR.IO", "Solid"]
+        .into_iter()
+        .zip(crate::SKIN_NAMES.iter().map(|s| s.to_string()))
+        .collect();
+    let piece_kind_items = ["Tetromino SRS", "Tetromino ASC", "123Mino", "1234Mino"]
         .into_iter()
         .zip(PieceTypes::iter())
         .collect();
-    let kick_table_items = ["srs", "lru"].into_iter().zip(KickTables::iter()).collect();
-    let kick_table_180_items = ["tetr.io", "lru"].into_iter().zip(KickTable180s::iter()).collect();
+    let kick_table_items = ["SRS", "ASC", "Basic"].into_iter().zip(KickTables::iter()).collect();
+    let kick_table_180_items = ["TETR.IO", "Basic"].into_iter().zip(KickTable180s::iter()).collect();
 
     macro_rules! keybind_capture_buttons {
         ($($label:expr; $input:ident),*) => { view! { cx,
@@ -396,7 +399,9 @@ enum ConfigMsg {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize, EnumIter)]
 pub enum PieceTypes {
     TetrominoSrs,
+    TetrominoAsc,
     Mino123,
+    Mino1234,
 }
 
 impl PieceTypes {
@@ -404,7 +409,9 @@ impl PieceTypes {
     pub fn kinds(&self) -> Vec<PieceKind> {
         match self {
             PieceTypes::TetrominoSrs => <TetrominoSrs as PieceKindTrait>::iter(),
+            PieceTypes::TetrominoAsc => <TetrominoAsc as PieceKindTrait>::iter(),
             PieceTypes::Mino123 => <Mino123 as PieceKindTrait>::iter(),
+            PieceTypes::Mino1234 => <Mino1234 as PieceKindTrait>::iter(),
         }
         .collect()
     }
@@ -413,14 +420,16 @@ impl PieceTypes {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize, EnumIter)]
 pub enum KickTables {
     Srs,
-    Lru,
+    Asc,
+    Basic,
 }
 
 impl KickTables {
     pub fn table(&self) -> &dyn KickTable {
         match self {
             KickTables::Srs => &SrsKickTable,
-            KickTables::Lru => &LruKickTable,
+            KickTables::Asc => &AscKickTable,
+            KickTables::Basic => &BasicKickTable,
         }
     }
 }
@@ -435,7 +444,7 @@ impl KickTable180s {
     pub fn table(&self) -> &dyn KickTable180 {
         match self {
             KickTable180s::TetrIo => &TetrIo180KickTable,
-            KickTable180s::Lru => &LruKickTable,
+            KickTable180s::Lru => &BasicKickTable,
         }
     }
 }

@@ -10,7 +10,7 @@ use std::{mem, ops};
 use field::DefaultField;
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
-use pieces::{mino123::Mino123, tetromino::TetrominoSrs};
+use pieces::{mino123::Mino123, tetromino::{TetrominoSrs, TetrominoAsc}, mino1234::Mino1234};
 use rand::prelude::SliceRandom;
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
@@ -78,17 +78,22 @@ pub trait PieceKindTrait {
     fn n_kinds() -> usize;
 }
 
+// TODO: move to piece module?
 #[derive(Copy, Clone, Debug)]
 pub enum PieceKind {
     TetrominoSrs(TetrominoSrs),
+    TetrominoAsc(TetrominoAsc),
     Mino123(Mino123),
+    Mino1234(Mino1234),
 }
 
 // generate match statement over all `PieceKind`s that calls a method, optionally with arguments
 macro_rules! gen_piece_kind_match {
     ($self:ident, $method:ident $(,)? $($arg:expr),*) => { match $self {
         PieceKind::TetrominoSrs(p) => p.$method($($arg,)*),
+        PieceKind::TetrominoAsc(p) => p.$method($($arg,)*),
         PieceKind::Mino123(p) => p.$method($($arg,)*),
+        PieceKind::Mino1234(p) => p.$method($($arg,)*),
     } }
 }
 
@@ -96,7 +101,9 @@ macro_rules! gen_piece_kind_match {
 macro_rules! gen_piece_kind_match_associated {
     ($self:ident, $method:ident $(,)? $($arg:expr),*) => { match $self {
         PieceKind::TetrominoSrs(_) => TetrominoSrs::$method($($arg,)*),
+        PieceKind::TetrominoAsc(_) => TetrominoAsc::$method($($arg,)*),
         PieceKind::Mino123(_) => Mino123::$method($($arg,)*),
+        PieceKind::Mino1234(_) => Mino1234::$method($($arg,)*),
     } }
 }
 
