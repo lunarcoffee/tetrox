@@ -23,6 +23,13 @@ impl PieceKindTrait for Mino1234 {
         }
     }
 
+    fn display_name(&self) -> &str {
+        match self {
+            Mino1234::Mino123(p) => p.display_name(),
+            Mino1234::TetrominoSrs(p) => p.display_name(),
+        }
+    }
+
     fn asset_name(&self) -> &str {
         match self {
             Mino1234::Mino123(p) => p.asset_name(),

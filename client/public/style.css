@@ -65,9 +65,9 @@ body {
     justify-self: flex-end;
     text-align: right;
 
-    padding: 12px 28px 12px 5vw;
+    padding: 12px 28px 16px 5vw;
     width: 16vw;
-    height: calc(100vh - 24px);
+    height: calc(100vh - 28px);
 
     position: fixed;
     top: 0;
@@ -145,10 +145,6 @@ body {
     flex-wrap: wrap;
     flex-direction: row-reverse;
 }
-
-.config-toggle-button-on {}
-
-.config-toggle-button-off {}
 
 .config-reset-button {
     filter: hue-rotate(90deg) saturate(300%);

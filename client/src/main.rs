@@ -10,6 +10,7 @@ mod config;
 mod game;
 mod stats;
 mod util;
+pub mod timer;
 
 pub const SKIN_NAMES: &[&str] = &["tetrox", "gradient", "inset", "rounded", "tetrio", "solid"];
 

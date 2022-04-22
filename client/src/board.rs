@@ -2,19 +2,18 @@ use crate::{
     canvas::{self, Field, HoldPiece, NextQueue},
     config::{Config, Input, PieceTypes, SpinTypes},
     stats::Stats,
-    util,
+    util, timer::{Timer, self},
 };
 
-use std::{cell::RefCell, collections::HashMap, mem};
+use std::{cell::RefCell, collections::HashMap};
 
-use gloo_timers::callback::Timeout;
 use strum::IntoEnumIterator;
 use sycamore::{
     component,
     generic_node::Html,
     prelude::{
-        create_effect, create_selector, create_signal, provide_context, provide_context_ref, use_context,
-        use_scope_status, ReadSignal, Scope, Signal,
+        create_effect, create_selector, create_signal, provide_context, provide_context_ref, use_context, ReadSignal,
+        Scope, Signal,
     },
     view,
     view::View,
@@ -23,7 +22,7 @@ use sycamore::{
 use tetrox::{
     field::{DefaultField, LineClear},
     pieces::{tetromino::TetrominoSrs, PieceKindTrait},
-    Randomizer, SingleBag, spins::SpinDetector,
+    Randomizer, SingleBag,
 };
 use wasm_bindgen::JsCast;
 use web_sys::{Event, HtmlImageElement, KeyboardEvent};
@@ -101,7 +100,7 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>, props: BoardProps<'a>) -> View<G> {
         // derive timer from looping interval
         let timer = delay.map(cx, move |d| Timer::new(cx, *d));
 
-        create_timer_finish_effect(cx, timer, move || {
+        timer::create_timer_finish_effect(cx, timer, move || {
             let state = inputs.get_untracked().borrow().get_state(&input);
             if state.is_held() {
                 if state.is_pressed() {
@@ -120,7 +119,7 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>, props: BoardProps<'a>) -> View<G> {
         let buffer_timer = delays.map(cx, move |(b, _)| Timer::new(cx, *b));
         let loop_timer = loop_timer(delays.map(cx, |d| d.1), input, action);
 
-        create_timer_finish_effect(cx, buffer_timer, move || {
+        timer::create_timer_finish_effect(cx, buffer_timer, move || {
             // apply the action if the input is still held down
             if inputs.get_untracked().borrow().get_state(&input).is_pressed() {
                 util::with_signal_mut_untracked(field_signal, |field| action.get()(field));
@@ -222,7 +221,7 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>, props: BoardProps<'a>) -> View<G> {
     });
 
     // gravity
-    create_timer_finish_effect(cx, gravity_timer, || {
+    timer::create_timer_finish_effect(cx, gravity_timer, || {
         if config.get_untracked().borrow().gravity_enabled {
             util::with_signal_mut_untracked(field_signal, |field| gravity_action.get()(field));
         }
@@ -248,7 +247,7 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>, props: BoardProps<'a>) -> View<G> {
     let lock_delay_piece = create_signal(cx, (*cur_piece.get()).clone());
 
     // auto lock
-    create_timer_finish_effect(cx, lock_delay_timer, || {
+    timer::create_timer_finish_effect(cx, lock_delay_timer, || {
         // lock the piece if it is the same as when the timer started
         let still_same_piece = cur_piece.get_untracked() == lock_delay_piece.get_untracked();
         if config.get_untracked().borrow().auto_lock_enabled && still_same_piece {
@@ -297,16 +296,6 @@ fn make_asset_cache() -> AssetCache {
         .collect()
 }
 
-// effect executed when the given `timer` finishes
-// if `op` returns true, the timer will start again (making a loop)
-fn create_timer_finish_effect<'a>(cx: Scope<'a>, timer: &'a ReadSignal<Timer>, mut op: impl FnMut() -> bool + 'a) {
-    create_effect(cx, move || {
-        if timer.get().is_finished() && op() {
-            timer.get().start();
-        }
-    });
-}
-
 fn hard_drop(
     field: &Signal<RefCell<DefaultField>>,
     bag: &Signal<RefCell<impl Randomizer>>,
@@ -319,57 +308,6 @@ fn hard_drop(
         })
     });
     util::notify_subscribers(bag);
-}
-
-// a resettable timer that waits for a timeout and sets a flag upon completion
-struct Timer<'a>(RefCell<TimerInner<'a>>);
-
-struct TimerInner<'a> {
-    cx: Scope<'a>,
-
-    duration: u32,
-    timeout: Option<Timeout>,
-    is_finished: &'a Signal<bool>,
-}
-
-impl<'a> Timer<'a> {
-    fn new(cx: Scope<'a>, duration: u32) -> Self {
-        Timer(RefCell::new(TimerInner {
-            cx,
-
-            duration,
-            timeout: None,
-            is_finished: create_signal(cx, false),
-        }))
-    }
-
-    // this value is reactive and should be used to perform an action on completion of the timeout
-    fn is_finished(&self) -> bool { *self.0.borrow().is_finished.get() }
-
-    // run the timer, setting the `is_finished` signal to true when the `duration` has elapsed
-    fn start(&self) {
-        self.stop();
-
-        let scope_alive = use_scope_status(self.0.borrow().cx);
-        let is_finished = self.0.borrow().is_finished.clone();
-
-        // SAFETY: transmuting from 'a to 'static lets this be used in the timeout
-        // this is safe as we check if the scope is alive before calling the closure
-        let is_finished = unsafe { mem::transmute::<_, &'static Signal<bool>>(is_finished) };
-
-        let timeout = Timeout::new(self.0.borrow().duration, move || {
-            if *scope_alive.get() {
-                is_finished.set(true);
-            }
-        });
-        self.0.borrow_mut().timeout = Some(timeout);
-    }
-
-    // stop any currently running timer and mark it as unfinished, effectively resetting it
-    fn stop(&self) {
-        self.0.borrow_mut().timeout.take().map(|t| t.cancel());
-        self.0.borrow().is_finished.set(false);
-    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

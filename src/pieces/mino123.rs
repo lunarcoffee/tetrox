@@ -43,6 +43,15 @@ impl PieceKindTrait for Mino123 {
         }
     }
     
+    fn display_name(&self) -> &str {
+        match self {
+            Mino123::Monomino => "o1",
+            Mino123::Domino => "i2",
+            Mino123::LTromino => "l3",
+            Mino123::ITromino => "i3",
+        }
+    }
+
     fn asset_name(&self) -> &str {
         match self {
             Mino123::Monomino => "o",

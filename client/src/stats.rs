@@ -31,9 +31,13 @@ pub fn Stats<'a, G: Html>(cx: Scope<'a>, props: StatsProps<'a>) -> View<G> {
             .and_then(|l| {
                 // update the line clear text if lines were cleared or the last locked piece was a spin
                 (l.n_lines() > 0 || l.spin().is_some()).then(|| {
-                    let mini = if l.is_mini() { "mini" } else { "" };
-                    let spin = l.spin().map(|_| "t-spin ").unwrap_or("");
+                    let mini = if l.is_mini() { "mini " } else { "" };
+                    let spin = l
+                        .spin()
+                        .map(|s| format!("{}-spin ", s.display_name()))
+                        .unwrap_or("".to_string());
                     let n_text = ["", "single", "double", "triple", "quad"][l.n_lines()];
+                    
                     format!("{}{}{}", mini, spin, n_text).trim().to_string()
                 })
             })

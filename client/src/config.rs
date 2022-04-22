@@ -27,7 +27,7 @@ use tetrox::{
         tetromino::{TetrominoAsc, TetrominoSrs},
         PieceKind, PieceKindTrait,
     },
-    spins::{SpinDetector, TSpinDetector, ImmobileSpinDetector, NoSpinDetector},
+    spins::{ImmobileSpinDetector, NoSpinDetector, SpinDetector, TSpinDetector},
 };
 use wasm_bindgen::JsCast;
 use web_sys::{Event, HtmlInputElement, HtmlSelectElement, KeyboardEvent, Storage};
@@ -110,17 +110,20 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
         soft_drop_rate; SoftDropRate
     };
 
+    // make label and item pair list for the select inputs 
+    macro_rules! gen_selector_items {
+        ($enum_name:ident, $($item_label:expr),*) => {
+            [$($item_label,)*].into_iter().zip($enum_name::iter()).collect()
+        }
+    }
+    let piece_kind_items = gen_selector_items!(PieceTypes, "Tetromino SRS", "Tetromino ASC", "123Mino", "1234Mino");
+    let kick_table_items = gen_selector_items!(KickTables, "SRS", "ASC", "Basic");
+    let kick_table_180_items = gen_selector_items!(KickTable180s, "TETR.IO", "Basic");
+    let spin_type_items = gen_selector_items!(SpinTypes, "T-Spins", "Immobile", "None");
     let skin_name_items = ["Tetrox", "Gradient", "Inset", "Cirxel", "TETR.IO", "Solid"]
         .into_iter()
         .zip(crate::SKIN_NAMES.iter().map(|s| s.to_string()))
         .collect();
-    let piece_kind_items = ["Tetromino SRS", "Tetromino ASC", "123Mino", "1234Mino"]
-        .into_iter()
-        .zip(PieceTypes::iter())
-        .collect();
-    let kick_table_items = ["SRS", "ASC", "Basic"].into_iter().zip(KickTables::iter()).collect();
-    let kick_table_180_items = ["TETR.IO", "Basic"].into_iter().zip(KickTable180s::iter()).collect();
-    let spin_type_items = ["T-Spin", "All (immobile)", "None"].into_iter().zip(SpinTypes::iter()).collect();
 
     macro_rules! keybind_capture_buttons {
         ($($label:expr; $input:ident),*) => { view! { cx,
@@ -150,9 +153,9 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
                 RangeInput { label: "Field height", min: 3, max: 100, step: 1, value: field_hidden }
                 RangeInput { label: "Queue length", min: 0, max: 7, step: 1, value: queue_len }
                 SelectInput { label: "Piece kind", items: piece_kind_items, value: piece_type }
+                SelectInput { label: "Spin detection", items: spin_type_items, value: spin_types }
                 SelectInput { label: "Kick table", items: kick_table_items, value: kick_table }
                 SelectInput { label: "180 kick table", items: kick_table_180_items, value: kick_table_180 }
-                SelectInput { label: "Spin types", items: spin_type_items, value: spin_types }
                 Padding(4)
 
                 SectionHeading("Visual")
@@ -383,9 +386,9 @@ enum ConfigMsg {
     FieldHidden(usize),
     QueueLen(usize),
     PieceType(PieceTypes),
+    SpinType(SpinTypes),
     KickTable(KickTables),
     KickTable180(KickTable180s),
-    SpinType(SpinTypes),
 
     SkinName(String),
     FieldZoom(f64),
@@ -505,9 +508,9 @@ pub struct Config {
     pub field_hidden: usize,
     pub queue_len: usize,
     pub piece_type: PieceTypes,
+    pub spin_types: SpinTypes,
     pub kick_table: KickTables,
     pub kick_table_180: KickTable180s,
-    pub spin_types: SpinTypes,
 
     // visual settings
     pub skin_name: String,

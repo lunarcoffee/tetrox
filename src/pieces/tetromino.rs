@@ -52,7 +52,7 @@ impl PieceKindTrait for TetrominoSrs {
         }
     }
 
-    fn asset_name(&self) -> &str {
+    fn display_name(&self) -> &str {
         match self {
             TetrominoSrs::S => "s",
             TetrominoSrs::Z => "z",
@@ -62,6 +62,10 @@ impl PieceKindTrait for TetrominoSrs {
             TetrominoSrs::O => "o",
             TetrominoSrs::I => "i",
         }
+    }
+
+    fn asset_name(&self) -> &str {
+        self.display_name()
     }
 
     fn iter() -> Box<dyn Iterator<Item = PieceKind>> {
@@ -107,7 +111,7 @@ impl PieceKindTrait for TetrominoAsc {
         }
     }
 
-    fn asset_name(&self) -> &str {
+    fn display_name(&self) -> &str {
         match self {
             TetrominoAsc::S => "s",
             TetrominoAsc::Z => "z",
@@ -117,6 +121,10 @@ impl PieceKindTrait for TetrominoAsc {
             TetrominoAsc::O => "o",
             TetrominoAsc::I => "i",
         }
+    }
+
+    fn asset_name(&self) -> &str {
+        self.display_name()
     }
 
     fn iter() -> Box<dyn Iterator<Item = PieceKind>> {

@@ -1,10 +1,14 @@
-use crate::{Coords, CoordsFloat, kicks::RotationState};
+use crate::{kicks::RotationState, Coords, CoordsFloat};
 
-use self::{tetromino::{TetrominoSrs, TetrominoAsc}, mino123::Mino123, mino1234::Mino1234};
+use self::{
+    mino123::Mino123,
+    mino1234::Mino1234,
+    tetromino::{TetrominoAsc, TetrominoSrs},
+};
 
 pub mod mino123;
-pub mod tetromino;
 pub mod mino1234;
+pub mod tetromino;
 
 pub trait PieceKindTrait {
     // coords of the squares composing the piece relative to the spawn coords
@@ -13,6 +17,8 @@ pub trait PieceKindTrait {
     // index of the rotation pivot of the piece with a possibly zero offset
     // pieces like the i tetromino have apparent pivots that intersect
     fn pivot_offset(&self, rotation_state: RotationState) -> (usize, CoordsFloat);
+
+    fn display_name(&self) -> &str;
 
     fn asset_name(&self) -> &str;
 
@@ -49,5 +55,7 @@ impl PieceKind {
         gen_piece_kind_match!(self, pivot_offset, rotation_state)
     }
 
+    pub fn display_name(&self) -> &str { gen_piece_kind_match!(self, display_name) }
+    
     pub fn asset_name(&self) -> &str { gen_piece_kind_match!(self, asset_name) }
 }
