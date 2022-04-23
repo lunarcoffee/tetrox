@@ -1,14 +1,15 @@
 use crate::{
     canvas::{self, Field, HoldPiece, NextQueue},
-    config::{Config, Input, PieceTypes, SpinTypes},
-    game::TimersPaused,
+    config::{Config, GoalTypes, Input, SpinTypes},
+    goal,
     stats::Stats,
     timer::{self, Timer},
     util,
 };
 
-use std::{cell::RefCell, collections::HashMap, ops::AddAssign};
+use std::{cell::RefCell, collections::HashMap};
 
+use js_sys::Date;
 use strum::IntoEnumIterator;
 use sycamore::{
     component,
@@ -19,7 +20,6 @@ use sycamore::{
     },
     view,
     view::View,
-    Prop,
 };
 use tetrox::{
     field::{DefaultField, LineClear},
@@ -29,20 +29,13 @@ use tetrox::{
 use wasm_bindgen::JsCast;
 use web_sys::{Event, HtmlImageElement, KeyboardEvent};
 
-#[derive(Prop)]
-pub struct BoardProps<'a> {
-    piece_type: &'a ReadSignal<PieceTypes>,
-    run_timers: &'a Signal<TimersPaused>,
-}
-
 #[component]
-pub fn Board<'a, G: Html>(cx: Scope<'a>, props: BoardProps<'a>) -> View<G> {
-    let BoardProps { piece_type, run_timers } = props;
-
+pub fn Board<'a, G: Html>(cx: Scope<'a>) -> View<G> {
     let config = use_context::<Signal<RefCell<Config>>>(cx);
     let c = config.get();
-    let c = c.borrow();
+    let c = (*c.borrow()).clone();
 
+    let piece_type = util::create_config_selector(cx, config, |c| c.piece_type);
     let piece_kinds = piece_type.get().kinds();
     let spin_types = util::create_config_selector(cx, config, |c| c.spin_types);
 
@@ -51,7 +44,7 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>, props: BoardProps<'a>) -> View<G> {
     let field_signal = create_signal(cx, RefCell::new(field));
     provide_context_ref(cx, field_signal);
 
-    let piece_kinds = props.piece_type.map(cx, |t| t.kinds());
+    let piece_kinds = piece_type.map(cx, |t| t.kinds());
     let bag = create_signal(cx, RefCell::new(bag));
 
     create_effect(cx, || {
@@ -71,12 +64,15 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>, props: BoardProps<'a>) -> View<G> {
     // used in canvas drawing
     provide_context(cx, make_asset_cache());
 
-    // notify parent component when topped out (to stop timers, etc.)
-    let topped_out = create_selector(cx, || field_signal.get().borrow().topped_out());
-    create_effect(cx, || {
-        if *topped_out.get() {
-            run_timers.set(false.into());
-        }
+    let time_elapsed = create_signal(cx, 0.0);
+    provide_context_ref(cx, time_elapsed);
+
+    // measuring time elapsed since last board reset
+    let start_time = create_signal(cx, Date::now());
+    let elapsed_timer = create_signal(cx, Timer::new(cx, 33));
+    timer::create_timer_finish_effect(cx, elapsed_timer, move || {
+        time_elapsed.set(Date::now() - *start_time.get());
+        true
     });
 
     // loop timer durations
@@ -144,20 +140,105 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>, props: BoardProps<'a>) -> View<G> {
     let right_timer = buffered_loop_timer(das_arr, Input::Right, right_action);
     let soft_drop_timer = loop_timer(sdr, Input::SoftDrop, soft_drop_action);
 
-    // previous line clear type (used for stats and some goals)
     let last_line_clear = create_signal(cx, None::<LineClear>);
+    let topped_out = create_selector(cx, || field_signal.get().borrow().topped_out());
 
-    // current game goal
-    let n_lines = create_signal(cx, 40);
-    let goal = create_signal(cx, LinesGoal::new(cx, last_line_clear, n_lines));
+    // gravity timer
+    let gravity_delay = util::create_config_selector(cx, config, |c| c.gravity_delay);
+    let gravity_action = loop_timer_shift_action!(1, 0, gravity_delay);
+    let gravity_timer = gravity_delay.map(cx, move |d| {
+        let timer = Timer::new(cx, *d);
+        timer.start();
+        timer
+    });
+    timer::create_timer_finish_effect(cx, gravity_timer, || {
+        if config.get_untracked().borrow().gravity_enabled {
+            util::with_signal_mut_untracked(field_signal, |field| gravity_action.get()(field));
+        }
+        true
+    });
 
-    // top out to end the game when the goal is reached
-    create_effect(cx, move || {
-        if goal.get().reached() {
-            util::with_signal_mut(field_signal, |field| field.top_out());
-            run_timers.set(false.into());
+    // lock delay timer
+    let lock_delay = util::create_config_selector(cx, config, |c| c.lock_delay);
+    let lock_delay_timer = lock_delay.map(cx, move |d| Timer::new(cx, *d));
+    let cur_piece = create_selector(cx, || field_signal.get().borrow().cur_piece().coords().clone());
+    let lock_delay_piece = create_signal(cx, (*cur_piece.get()).clone());
+
+    // auto lock
+    timer::create_timer_finish_effect(cx, lock_delay_timer, || {
+        // lock the piece if it is the same as when the timer started
+        let still_same_piece = cur_piece.get_untracked() == lock_delay_piece.get_untracked();
+        if config.get_untracked().borrow().auto_lock_enabled && still_same_piece {
+            hard_drop(field_signal, bag, spin_types, last_line_clear);
+        }
+        false
+    });
+
+    // starts lock delay timer if the current piece touches the stack
+    create_effect(cx, || {
+        cur_piece.track();
+        if field_signal.get_untracked().borrow().cur_piece_cannot_move_down() {
+            util::with_signal_mut_untracked(field_signal, |field| field.activate_lock_delay());
+            lock_delay_piece.set((*cur_piece.get()).clone());
+            lock_delay_timer.get().start();
         }
     });
+
+    // toggle running state of timers
+    let run_timers = create_signal(cx, true);
+    create_effect(cx, || {
+        elapsed_timer.get().stop();
+        gravity_timer.get().stop();
+        lock_delay_timer.get().stop();
+
+        // set elapsed time accurately
+        time_elapsed.set(Date::now() - *start_time.get_untracked());
+
+        if *run_timers.get() {
+            time_elapsed.set(0.0);
+            start_time.set(Date::now());
+
+            elapsed_timer.get().start();
+            gravity_timer.get().start();
+            // don't start lock delay timer
+        }
+    });
+
+    // current game goal
+    let goal_type = util::create_config_selector(cx, config, |c| c.goal_type);
+    let make_goal = move || match *goal_type.get() {
+        GoalTypes::None => goal::none(cx),
+        GoalTypes::LinesCleared => goal::lines_cleared(cx, config, last_line_clear),
+        GoalTypes::TimeLimit => goal::time_limit(cx, config, time_elapsed),
+    };
+
+    // not mapped signal as it must be mutable (for resetting)
+    let goal = create_signal(cx, make_goal());
+    create_effect(cx, move || goal.set(make_goal()));
+
+    // top out to end the game when the goal is reached or the player topped out naturally
+    create_effect(cx, move || {
+        if goal.get().is_completed() {
+            util::with_signal_mut(field_signal, |field| field.top_out());
+        }
+        if *topped_out.get() {
+            run_timers.set(false);
+        }
+    });
+
+    let reset_board = move || {
+        last_line_clear.set(None);
+        goal.set(make_goal());
+
+        let kinds = piece_kinds.get();
+        let mut new_bag = SingleBag::new((*kinds).clone());
+        let field = DefaultField::new(c.field_width, c.field_height, c.field_hidden, &*kinds, &mut new_bag);
+
+        run_timers.set(true);
+
+        field_signal.set(RefCell::new(field));
+        bag.set(RefCell::new(new_bag));
+    };
 
     let keydown_handler = move |e: Event| {
         let e = e.dyn_into::<KeyboardEvent>().unwrap();
@@ -173,24 +254,11 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>, props: BoardProps<'a>) -> View<G> {
 
             // actions possible after topping out
             match input {
-                Input::Reset => {
-                    last_line_clear.set(None);
-                    goal.set(LinesGoal::new(cx, last_line_clear, n_lines));
-                    inputs.set(RefCell::new(InputStates::new()));
-
-                    let kinds = piece_kinds.get();
-                    let mut new_bag = SingleBag::new((*kinds).clone());
-                    let field = DefaultField::new(c.field_width, c.field_height, c.field_hidden, &*kinds, &mut new_bag);
-
-                    field_signal.set(RefCell::new(field));
-                    bag.set(RefCell::new(new_bag));
-
-                    run_timers.set(true.into()); // notify parent component
-                }
+                Input::Reset => reset_board(),
                 _ => {}
             }
 
-            if field_signal.get().borrow().topped_out() && c.topping_out_enabled {
+            if *topped_out.get() && c.topping_out_enabled {
                 return;
             }
 
@@ -244,22 +312,6 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>, props: BoardProps<'a>) -> View<G> {
         });
     };
 
-    let gravity_delay = util::create_config_selector(cx, config, |c| c.gravity_delay);
-    let gravity_action = loop_timer_shift_action!(1, 0, gravity_delay);
-    let gravity_timer = gravity_delay.map(cx, move |d| {
-        let timer = Timer::new(cx, *d);
-        timer.start();
-        timer
-    });
-
-    // gravity
-    timer::create_timer_finish_effect(cx, gravity_timer, || {
-        if config.get_untracked().borrow().gravity_enabled {
-            util::with_signal_mut_untracked(field_signal, |field| gravity_action.get()(field));
-        }
-        true
-    });
-
     let move_limit = util::create_config_selector(cx, config, |c| c.move_limit);
     let actions_since_lock_delay = create_selector(cx, || {
         field_signal.get().borrow().actions_since_lock_delay().unwrap_or(0)
@@ -270,31 +322,6 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>, props: BoardProps<'a>) -> View<G> {
         let limit_reached = actions_since_lock_delay.get() == move_limit.get_untracked();
         if config.get_untracked().borrow().move_limit_enabled && limit_reached {
             hard_drop(field_signal, bag, spin_types, last_line_clear);
-        }
-    });
-
-    let lock_delay = util::create_config_selector(cx, config, |c| c.lock_delay);
-    let lock_delay_timer = lock_delay.map(cx, move |d| Timer::new(cx, *d));
-    let cur_piece = create_selector(cx, || field_signal.get().borrow().cur_piece().coords().clone());
-    let lock_delay_piece = create_signal(cx, (*cur_piece.get()).clone());
-
-    // auto lock
-    timer::create_timer_finish_effect(cx, lock_delay_timer, || {
-        // lock the piece if it is the same as when the timer started
-        let still_same_piece = cur_piece.get_untracked() == lock_delay_piece.get_untracked();
-        if config.get_untracked().borrow().auto_lock_enabled && still_same_piece {
-            hard_drop(field_signal, bag, spin_types, last_line_clear);
-        }
-        false
-    });
-
-    // starts lock delay timer if the current piece touches the stack
-    create_effect(cx, || {
-        cur_piece.track();
-        if field_signal.get_untracked().borrow().cur_piece_cannot_move_down() {
-            util::with_signal_mut_untracked(field_signal, |field| field.activate_lock_delay());
-            lock_delay_piece.set((*cur_piece.get()).clone());
-            lock_delay_timer.get().start();
         }
     });
 
@@ -339,11 +366,11 @@ fn hard_drop(
 ) {
     util::with_signal_mut_untracked(field, |field| {
         util::with_signal_mut_silent_untracked(bag, |bag| {
-            // silent so effects depending on this don't try to double borrow the field 
+            // silent so effects depending on this don't try to double borrow the field
             last_line_clear.set_silent(Some(field.hard_drop(bag, spin_types.get().detector())))
         })
     });
-    last_line_clear.set_rc(last_line_clear.get()); // TODO: refactor to util
+    util::notify_subscribers(last_line_clear);
     util::notify_subscribers(bag);
 }
 
@@ -408,32 +435,4 @@ impl InputStates {
             _ => None,
         }
     }
-}
-
-// TODO: extract to file?
-pub trait Goal {
-    fn reached(&self) -> bool;
-
-    fn display(&self) -> String;
-}
-
-pub struct LinesGoal<'a> {
-    n_lines: &'a Signal<u32>,
-    n_cleared: &'a ReadSignal<u32>,
-}
-
-impl<'a> LinesGoal<'a> {
-    pub fn new(cx: Scope<'a>, clear_type: &'a Signal<Option<LineClear>>, n_lines: &'a Signal<u32>) -> Self {
-        let new_lines_cleared = clear_type.map(cx, |c| c.as_ref().map(|c| c.n_lines()).unwrap_or(0) as u32);
-        let n_cleared = create_signal(cx, 0);
-        create_effect(cx, || n_cleared.modify().add_assign(*new_lines_cleared.get()));
-
-        LinesGoal { n_lines, n_cleared }
-    }
-}
-
-impl<'a> Goal for LinesGoal<'a> {
-    fn reached(&self) -> bool { self.n_lines.get() <= self.n_cleared.get() }
-
-    fn display(&self) -> String { format!("{}/{}", self.n_cleared.get(), self.n_lines.get()) }
 }

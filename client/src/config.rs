@@ -4,7 +4,11 @@ use std::{
     str::FromStr,
 };
 
-use crate::{game::Game, util::{self, Padding}};
+use crate::{
+    game::Game,
+    goal::{self, Goal},
+    util::{self, Padding},
+};
 
 use bimap::BiMap;
 use serde::{Deserialize, Serialize};
@@ -20,6 +24,7 @@ use sycamore::{
 };
 
 use tetrox::{
+    field::LineClear,
     kicks::{AscKickTable, BasicKickTable, KickTable, KickTable180, SrsKickTable, TetrIo180KickTable},
     pieces::{
         mino123::Mino123,
@@ -85,10 +90,11 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
                 gravity_delay; GravityDelay, lock_delay; LockDelay, move_limit; MoveLimit,
                 topping_out_enabled; ToppingOutEnabled, auto_lock_enabled; AutoLockEnabled,
                 gravity_enabled; GravityEnabled, move_limit_enabled; MoveLimitEnabled, field_width; FieldWidth,
-                queue_len; QueueLen, piece_type; PieceType, kick_table; KickTable, kick_table_180; KickTable180,
-                spin_types; SpinType, skin_name; SkinName, field_zoom; FieldZoom, vertical_offset; VerticalOffset,
-                shadow_opacity; ShadowOpacity, keybinds; Keybinds, delayed_auto_shift; DelayedAutoShift,
-                auto_repeat_rate; AutoRepeatRate, soft_drop_rate; SoftDropRate
+                queue_len; QueueLen, piece_type; PieceType, spin_types; SpinType, kick_table; KickTable,
+                kick_table_180; KickTable180, goal_type; GoalType, goal_n_lines; GoalNLines,
+                goal_time_limit_secs; GoalTimeLimitSecs, skin_name; SkinName, field_zoom; FieldZoom,
+                vertical_offset; VerticalOffset, shadow_opacity; ShadowOpacity, keybinds; Keybinds,
+                delayed_auto_shift; DelayedAutoShift, auto_repeat_rate; AutoRepeatRate, soft_drop_rate; SoftDropRate
             }
         });
     };
@@ -104,13 +110,13 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
         gravity_delay; GravityDelay, lock_delay; LockDelay, move_limit; MoveLimit,
         topping_out_enabled; ToppingOutEnabled, auto_lock_enabled; AutoLockEnabled, gravity_enabled; GravityEnabled,
         move_limit_enabled; MoveLimitEnabled, field_width; FieldWidth, field_hidden; FieldHidden, queue_len; QueueLen,
-        piece_type; PieceType, kick_table; KickTable, kick_table_180; KickTable180, spin_types; SpinType,
-        skin_name; SkinName, field_zoom; FieldZoom, vertical_offset; VerticalOffset, shadow_opacity; ShadowOpacity,
-        keybinds; Keybinds, delayed_auto_shift; DelayedAutoShift, auto_repeat_rate; AutoRepeatRate,
-        soft_drop_rate; SoftDropRate
+        piece_type; PieceType, spin_types; SpinType, kick_table; KickTable, kick_table_180; KickTable180,
+        goal_type; GoalType, goal_n_lines; GoalNLines, goal_time_limit_secs; GoalTimeLimitSecs, skin_name; SkinName,
+        field_zoom; FieldZoom, vertical_offset; VerticalOffset, shadow_opacity; ShadowOpacity, keybinds; Keybinds,
+        delayed_auto_shift; DelayedAutoShift, auto_repeat_rate; AutoRepeatRate, soft_drop_rate; SoftDropRate
     };
 
-    // make label and item pair list for the select inputs 
+    // make label and item pair list for the select inputs
     macro_rules! gen_selector_items {
         ($enum_name:ident, $($item_label:expr),*) => {
             [$($item_label,)*].into_iter().zip($enum_name::iter()).collect()
@@ -120,6 +126,7 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
     let kick_table_items = gen_selector_items!(KickTables, "SRS", "ASC", "Basic");
     let kick_table_180_items = gen_selector_items!(KickTable180s, "TETR.IO", "Basic");
     let spin_type_items = gen_selector_items!(SpinTypes, "T-Spins", "Immobile", "None");
+    let goal_type_items = gen_selector_items!(GoalTypes, "None", "Lines cleared", "Time limit");
     let skin_name_items = ["Tetrox", "Gradient", "Inset", "Cirxel", "TETR.IO", "Solid"]
         .into_iter()
         .zip(crate::SKIN_NAMES.iter().map(|s| s.to_string()))
@@ -147,6 +154,7 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
                     ToggleButton { label: "Gravity", value: gravity_enabled }
                     ToggleButton { label: "Move limit", value: move_limit_enabled }
                 }
+                Padding(2)
 
                 SectionHeading("Playfield")
                 RangeInput { label: "Field width", min: 4, max: 100, step: 1, value: field_width }
@@ -157,6 +165,21 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
                 SelectInput { label: "Kick table", items: kick_table_items, value: kick_table }
                 SelectInput { label: "180 kick table", items: kick_table_180_items, value: kick_table_180 }
                 Padding(4)
+
+                SectionHeading("Goal")
+                SelectInput { label: "Goal type", items: goal_type_items, value: goal_type }
+                Padding(4)
+                (match *goal_type.get() {
+                    GoalTypes::LinesCleared => view! { cx,
+                        Padding(4)
+                        RangeInput { label: "Lines cleared", min: 1, max: 1_000, step: 1, value: goal_n_lines }
+                    },
+                    GoalTypes::TimeLimit => view! { cx, 
+                        Padding(4)
+                        RangeInput { label: "Time limit", min: 5, max: 3_600, step: 1, value: goal_time_limit_secs }
+                    },
+                    _ => view! { cx, }
+                })
 
                 SectionHeading("Visual")
                 RangeInput { label: "Field zoom", min: 0.1, max: 4.0, step: 0.05, value: field_zoom }
@@ -171,6 +194,7 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
                     "Rotate CW"; RotateCw, "Rotate CCW"; RotateCcw, "Rotate 180"; Rotate180, "Swap hold"; SwapHold,
                     "Reset"; Reset, "Show/hide UI"; ShowHideUi
                 })
+                Padding(2)
 
                 SectionHeading("Handling")
                 RangeInput { label: "DAS", min: 0, max: 500, step: 1, value: delayed_auto_shift }
@@ -344,7 +368,7 @@ struct InputLabelProps<'a, T: Display + 'static> {
     value: &'a ReadSignal<T>,
 }
 
-#[component]
+#[component] // TODO: enable editing text
 fn InputLabel<'a, T: Display + 'static, G: Html>(cx: Scope<'a>, props: InputLabelProps<'a, T>) -> View<G> {
     view! { cx, p(class="config-option-label") { (props.label) " (" (props.value.get()) "):" } }
 }
@@ -366,37 +390,6 @@ impl FieldValues {
             queue_len,
         }
     }
-}
-
-enum ConfigMsg {
-    GravityDelay(u32),
-    LockDelay(u32),
-    MoveLimit(usize),
-    ToppingOutEnabled(bool),
-    AutoLockEnabled(bool),
-    GravityEnabled(bool),
-    MoveLimitEnabled(bool),
-
-    FieldWidth(usize),
-    FieldHidden(usize),
-    QueueLen(usize),
-    PieceType(PieceTypes),
-    SpinType(SpinTypes),
-    KickTable(KickTables),
-    KickTable180(KickTable180s),
-
-    SkinName(String),
-    FieldZoom(f64),
-    VerticalOffset(i32),
-    ShadowOpacity(f64),
-
-    Keybinds(Keybinds),
-
-    DelayedAutoShift(u32),
-    AutoRepeatRate(u32),
-    SoftDropRate(u32),
-
-    _ToggleUi,
 }
 
 // all types of `PieceKind`s
@@ -470,6 +463,13 @@ impl SpinTypes {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize, EnumIter)]
+pub enum GoalTypes {
+    None,
+    LinesCleared,
+    TimeLimit,
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, EnumIter)]
 pub enum Input {
     Left,
@@ -486,7 +486,7 @@ pub enum Input {
 
 pub type Keybinds = BiMap<Input, String>;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Config {
     // gameplay
     pub gravity_delay: u32,
@@ -506,6 +506,11 @@ pub struct Config {
     pub spin_types: SpinTypes,
     pub kick_table: KickTables,
     pub kick_table_180: KickTable180s,
+
+    // goal settings
+    pub goal_type: GoalTypes,
+    pub goal_n_lines: u32,
+    pub goal_time_limit_secs: u64,
 
     // visual settings
     pub skin_name: String,
@@ -546,20 +551,6 @@ impl Default for Config {
         ];
 
         Config {
-            skin_name: "tetrox".to_string(),
-            field_zoom: 1.0,
-            vertical_offset: 170,
-            shadow_opacity: 0.3,
-
-            field_width: 10,
-            field_height: 40,
-            field_hidden: 20,
-            queue_len: 5,
-            piece_type: PieceTypes::TetrominoSrs,
-            kick_table: KickTables::Srs,
-            kick_table_180: KickTable180s::TetrIo,
-            spin_types: SpinTypes::TSpins,
-
             gravity_delay: 1_000,
             lock_delay: 500,
             move_limit: 30,
@@ -568,6 +559,24 @@ impl Default for Config {
             gravity_enabled: true,
             move_limit_enabled: true,
 
+            field_width: 10,
+            field_height: 40,
+            field_hidden: 20,
+            queue_len: 5,
+            piece_type: PieceTypes::TetrominoSrs,
+            spin_types: SpinTypes::TSpins,
+            kick_table: KickTables::Srs,
+            kick_table_180: KickTable180s::TetrIo,
+
+            goal_type: GoalTypes::None,
+            goal_n_lines: 40,
+            goal_time_limit_secs: 120,
+
+            skin_name: "tetrox".to_string(),
+            field_zoom: 1.0,
+            vertical_offset: 170,
+            shadow_opacity: 0.3,
+
             keybinds: inputs.into_iter().map(|(i, k)| (i, k.to_string())).collect(),
 
             delayed_auto_shift: 280,
@@ -575,4 +584,39 @@ impl Default for Config {
             soft_drop_rate: 30,
         }
     }
+}
+
+enum ConfigMsg {
+    GravityDelay(u32),
+    LockDelay(u32),
+    MoveLimit(usize),
+    ToppingOutEnabled(bool),
+    AutoLockEnabled(bool),
+    GravityEnabled(bool),
+    MoveLimitEnabled(bool),
+
+    FieldWidth(usize),
+    FieldHidden(usize),
+    QueueLen(usize),
+    PieceType(PieceTypes),
+    SpinType(SpinTypes),
+    KickTable(KickTables),
+    KickTable180(KickTable180s),
+
+    GoalType(GoalTypes),
+    GoalNLines(u32),
+    GoalTimeLimitSecs(u64),
+
+    SkinName(String),
+    FieldZoom(f64),
+    VerticalOffset(i32),
+    ShadowOpacity(f64),
+
+    Keybinds(Keybinds),
+
+    DelayedAutoShift(u32),
+    AutoRepeatRate(u32),
+    SoftDropRate(u32),
+
+    _ToggleUi,
 }

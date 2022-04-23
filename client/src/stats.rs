@@ -12,26 +12,31 @@ use sycamore::{
 use tetrox::field::LineClear;
 
 use crate::{
-    board::{Goal, LinesGoal},
-    util::Padding,
+    goal::Goal,
+    util::{self, Padding},
 };
 
 #[derive(Prop)]
-pub struct StatsProps<'a> {
+pub struct StatsProps<'a, G: Html> {
     last_line_clear: &'a Signal<Option<LineClear>>,
-    goal: &'a Signal<LinesGoal<'a>>,
+    goal: &'a Signal<Goal<'a, G>>,
 }
 
 #[component]
-pub fn Stats<'a, G: Html>(cx: Scope<'a>, props: StatsProps<'a>) -> View<G> {
+pub fn Stats<'a, G: Html>(cx: Scope<'a>, props: StatsProps<'a, G>) -> View<G> {
+    let StatsProps {
+        last_line_clear: line_clear,
+        goal,
+    } = props;
+
     let (lc_text, lc_view) = styled_text(cx, "clear-text", 2_000, 0.2, 0.3);
     let (pc_text, pc_view) = styled_text(cx, "clear-text", 2_000, 0.2, 0.3);
     let (combo_text, combo_view) = styled_text(cx, "combo-text", 3_000, 0.5, 0.15);
     let (b2b_text, b2b_view) = styled_text(cx, "b2b-text", 3_000, 0.5, 0.15);
 
     create_effect(cx, || {
-        let line_clear = props.last_line_clear.get();
         line_clear
+            .get()
             .as_ref()
             .as_ref()
             .and_then(|l| {
@@ -51,8 +56,8 @@ pub fn Stats<'a, G: Html>(cx: Scope<'a>, props: StatsProps<'a>) -> View<G> {
     });
 
     create_effect(cx, || {
-        let line_clear = props.last_line_clear.get();
         line_clear
+            .get()
             .as_ref()
             .as_ref()
             .and_then(|l| l.is_perfect_clear().then(|| "perfect clear"))
@@ -64,7 +69,7 @@ pub fn Stats<'a, G: Html>(cx: Scope<'a>, props: StatsProps<'a>) -> View<G> {
 
     // update combo and b2b
     create_effect(cx, || {
-        props.last_line_clear.get().as_ref().as_ref().map(|l| {
+        line_clear.get().as_ref().as_ref().map(|l| {
             let old_combo = *combo.get();
             let old_b2b = *b2b.get();
 
@@ -94,17 +99,19 @@ pub fn Stats<'a, G: Html>(cx: Scope<'a>, props: StatsProps<'a>) -> View<G> {
     let time_elapsed = use_context::<Signal<f64>>(cx);
 
     view! { cx,
-        (lc_view)
-        (pc_view)
-        (combo_view)
-        (b2b_view)
+        (lc_view) (pc_view)
+        (combo_view) (b2b_view)
         Padding(36)
 
-        p(class="game-stats-label") { "TIME" }
-        p(class="time-elapsed", style="direction: ltr;") { (format_duration(*time_elapsed.get())) }
-
-        p(class="game-stats-label") { "LINES" }
-        p(class="time-elapsed", style="direction: ltr;") { (props.goal.get().display()) }
+        (if goal.get().show_elapsed_time() {
+            view! { cx,
+                p(class="game-stats-label") { "TIME" }
+                p(class="time-elapsed", style="direction: ltr;") { (util::format_duration(*time_elapsed.get())) }
+            }
+        } else {
+            view! { cx, }
+        })
+        (goal.get().view())
     }
 }
 
@@ -155,14 +162,4 @@ fn styled_text<'a, G: Html>(
 
     let view = view! { cx, p(class=class, style=style.get()) { (text.get()) } };
     (text, view)
-}
-
-fn format_duration(millis: f64) -> String {
-    let time = Duration::from_millis(millis as u64);
-
-    let millis = time.as_millis() % 1_000;
-    let secs = time.as_secs() % 60;
-    let mins = time.as_secs() / 60;
-
-    format!("{}:{:02}.{:03}", mins, secs, millis)
 }

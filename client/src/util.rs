@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::{cell::RefCell, time::Duration};
 
 use sycamore::{
     component,
@@ -43,7 +43,7 @@ pub fn with_signal_mut<T, R>(signal: &Signal<RefCell<T>>, op: impl FnMut(&mut T)
 }
 
 // not sure why this function is no longer public api like in 0.7.x but oh well
-pub fn notify_subscribers<T>(signal: &Signal<RefCell<T>>) {
+pub fn notify_subscribers<T>(signal: &Signal<T>) {
     let value_rc = signal.get_untracked();
     signal.set_rc(value_rc);
 }
@@ -62,7 +62,18 @@ where
     create_selector(cx, move || op(&config.get().borrow()))
 }
 
+// vertical padding
 #[component]
 pub fn Padding<'a, G: Html>(cx: Scope<'a>, px: usize) -> View<G> {
     view! { cx, div(style=format!("min-height: {}px;", px)) }
+}
+
+pub fn format_duration(millis: f64) -> String {
+    let time = Duration::from_millis(millis as u64);
+
+    let millis = time.as_millis() % 1_000;
+    let secs = time.as_secs() % 60;
+    let mins = time.as_secs() / 60;
+
+    format!("{}:{:02}.{:03}", mins, secs, millis)
 }
