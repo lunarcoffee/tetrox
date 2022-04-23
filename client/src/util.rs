@@ -1,6 +1,12 @@
 use std::cell::RefCell;
 
-use sycamore::prelude::{create_selector, ReadSignal, Scope, Signal};
+use sycamore::{
+    component,
+    generic_node::Html,
+    prelude::{create_selector, ReadSignal, Scope, Signal},
+    view,
+    view::View,
+};
 
 use crate::config::Config;
 
@@ -54,4 +60,9 @@ where
     F: FnMut(&Config) -> T + 'a,
 {
     create_selector(cx, move || op(&config.get().borrow()))
+}
+
+#[component]
+pub fn Padding<'a, G: Html>(cx: Scope<'a>, px: usize) -> View<G> {
+    view! { cx, div(style=format!("min-height: {}px;", px)) }
 }

@@ -180,9 +180,18 @@ body {
     white-space: nowrap;
 }
 
-.game-stats>p {
+.game-stats-label {
     color: #ccc;
 
+    font-size: 1.2rem;
+    font-family: "Roboto Condensed";
+    font-weight: bold;
+
+    direction: ltr !important;
+}
+
+.game-stats>p {
+    color: #ccc;
     direction: rtl;
 }
 
@@ -202,6 +211,12 @@ body {
 .game-stats>.combo-text {
     font-size: 1.4rem;
     margin: 2.5rem 0 -0.5rem 0;
+}
+
+.time-elapsed {
+    color: #ccc !important;
+    font-size: 1.8rem;
+    margin: -14px 0 0 0;
 }
 
 .field {

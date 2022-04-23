@@ -14,9 +14,9 @@ pub fn create_timer_finish_effect<'a>(cx: Scope<'a>, timer: &'a ReadSignal<Timer
 }
 
 // a resettable timer that waits for a timeout and sets a flag upon completion
-pub struct Timer<'a>(RefCell<TimerInner<'a>>);
+pub struct Timer<'a>(RefCell<TimeoutTimerInner<'a>>);
 
-struct TimerInner<'a> {
+struct TimeoutTimerInner<'a> {
     cx: Scope<'a>,
 
     duration: u32,
@@ -26,7 +26,7 @@ struct TimerInner<'a> {
 
 impl<'a> Timer<'a> {
     pub fn new(cx: Scope<'a>, duration: u32) -> Self {
-        Timer(RefCell::new(TimerInner {
+        Timer(RefCell::new(TimeoutTimerInner {
             cx,
 
             duration,

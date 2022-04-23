@@ -1,11 +1,13 @@
 use crate::{
     canvas::{self, Field, HoldPiece, NextQueue},
     config::{Config, Input, PieceTypes, SpinTypes},
+    game::TimersPaused,
     stats::Stats,
-    util, timer::{Timer, self},
+    timer::{self, Timer},
+    util,
 };
 
-use std::{cell::RefCell, collections::HashMap};
+use std::{cell::RefCell, collections::HashMap, ops::AddAssign};
 
 use strum::IntoEnumIterator;
 use sycamore::{
@@ -30,15 +32,18 @@ use web_sys::{Event, HtmlImageElement, KeyboardEvent};
 #[derive(Prop)]
 pub struct BoardProps<'a> {
     piece_type: &'a ReadSignal<PieceTypes>,
+    run_timers: &'a Signal<TimersPaused>,
 }
 
 #[component]
 pub fn Board<'a, G: Html>(cx: Scope<'a>, props: BoardProps<'a>) -> View<G> {
+    let BoardProps { piece_type, run_timers } = props;
+
     let config = use_context::<Signal<RefCell<Config>>>(cx);
     let c = config.get();
     let c = c.borrow();
 
-    let piece_kinds = props.piece_type.get().kinds();
+    let piece_kinds = piece_type.get().kinds();
     let spin_types = util::create_config_selector(cx, config, |c| c.spin_types);
 
     let mut bag = SingleBag::new(piece_kinds.clone());
@@ -66,9 +71,13 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>, props: BoardProps<'a>) -> View<G> {
     // used in canvas drawing
     provide_context(cx, make_asset_cache());
 
-    // board css style config options
-    let style_values = util::create_config_selector(cx, config, |c| (c.field_zoom * 100.0, c.vertical_offset));
-    let game_style = style_values.map(cx, |d| format!("transform: scale({}%); margin-top: {}px;", d.0, d.1));
+    // notify parent component when topped out (to stop timers, etc.)
+    let topped_out = create_selector(cx, || field_signal.get().borrow().topped_out());
+    create_effect(cx, || {
+        if *topped_out.get() {
+            run_timers.set(false.into());
+        }
+    });
 
     // loop timer durations
     let das_arr = util::create_config_selector(cx, config, |c| (c.delayed_auto_shift, c.auto_repeat_rate));
@@ -90,7 +99,6 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>, props: BoardProps<'a>) -> View<G> {
             })
         };
     }
-
     let left_action = loop_timer_shift_action!(0, -1, arr);
     let right_action = loop_timer_shift_action!(0, 1, arr);
     let soft_drop_action = loop_timer_shift_action!(1, 0, sdr);
@@ -136,10 +144,22 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>, props: BoardProps<'a>) -> View<G> {
     let right_timer = buffered_loop_timer(das_arr, Input::Right, right_action);
     let soft_drop_timer = loop_timer(sdr, Input::SoftDrop, soft_drop_action);
 
-    // previous line clear type (used for stats)
+    // previous line clear type (used for stats and some goals)
     let last_line_clear = create_signal(cx, None::<LineClear>);
 
-    let keydown_handler = |e: Event| {
+    // current game goal
+    let n_lines = create_signal(cx, 40);
+    let goal = create_signal(cx, LinesGoal::new(cx, last_line_clear, n_lines));
+
+    // top out to end the game when the goal is reached
+    create_effect(cx, move || {
+        if goal.get().reached() {
+            util::with_signal_mut(field_signal, |field| field.top_out());
+            run_timers.set(false.into());
+        }
+    });
+
+    let keydown_handler = move |e: Event| {
         let e = e.dyn_into::<KeyboardEvent>().unwrap();
         let c = config.get();
         let c = c.borrow();
@@ -148,6 +168,29 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>, props: BoardProps<'a>) -> View<G> {
             // don't do anything if the input was already pressed
             // these presses come from the operating system repeating inputs automatically
             if util::with_signal_mut(inputs, |inputs| inputs.set_pressed(input)).is_pressed() {
+                return;
+            }
+
+            // actions possible after topping out
+            match input {
+                Input::Reset => {
+                    last_line_clear.set(None);
+                    goal.set(LinesGoal::new(cx, last_line_clear, n_lines));
+                    inputs.set(RefCell::new(InputStates::new()));
+
+                    let kinds = piece_kinds.get();
+                    let mut new_bag = SingleBag::new((*kinds).clone());
+                    let field = DefaultField::new(c.field_width, c.field_height, c.field_hidden, &*kinds, &mut new_bag);
+
+                    field_signal.set(RefCell::new(field));
+                    bag.set(RefCell::new(new_bag));
+
+                    run_timers.set(true.into()); // notify parent component
+                }
+                _ => {}
+            }
+
+            if field_signal.get().borrow().topped_out() && c.topping_out_enabled {
                 return;
             }
 
@@ -170,20 +213,9 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>, props: BoardProps<'a>) -> View<G> {
                 }
             });
 
-            match input {
-                // handle game resetting separately as `with_signal_mut` will replace the new field with the old one
-                // after the closure executes
-                Input::Reset => {
-                    let kinds = piece_kinds.get();
-                    let mut new_bag = SingleBag::new((*kinds).clone());
-                    let field = DefaultField::new(c.field_width, c.field_height, c.field_hidden, &*kinds, &mut new_bag);
-
-                    field_signal.set(RefCell::new(field));
-                    bag.set(RefCell::new(new_bag));
-                    inputs.set(RefCell::new(InputStates::new()));
-                }
-                Input::HardDrop => hard_drop(field_signal, bag, spin_types, last_line_clear),
-                _ => {}
+            // see comment below
+            if *input == Input::HardDrop {
+                hard_drop(field_signal, bag, spin_types, last_line_clear);
             }
 
             // only notify bag subscribers after the field is updated
@@ -266,11 +298,14 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>, props: BoardProps<'a>) -> View<G> {
         }
     });
 
+    let style_values = util::create_config_selector(cx, config, |c| (c.field_zoom * 100.0, c.vertical_offset));
+    let game_style = style_values.map(cx, |d| format!("transform: scale({}%); margin-top: {}px;", d.0, d.1));
+
     view! { cx,
         div(class="game", tabindex="0", style=game_style.get(), on:keydown=keydown_handler, on:keyup=keyup_handler) {
             div(class="field-panel") {
                 div(class="hold-piece") { HoldPiece {} }
-                div(class="game-stats") { Stats { last_line_clear } }
+                div(class="game-stats") { Stats { last_line_clear, goal } }
             }
             div(class="field") { Field {} }
             div(class="next-queue") { NextQueue { bag } }
@@ -304,9 +339,11 @@ fn hard_drop(
 ) {
     util::with_signal_mut_untracked(field, |field| {
         util::with_signal_mut_silent_untracked(bag, |bag| {
-            last_line_clear.set(Some(field.hard_drop(bag, spin_types.get().detector())))
+            // silent so effects depending on this don't try to double borrow the field 
+            last_line_clear.set_silent(Some(field.hard_drop(bag, spin_types.get().detector())))
         })
     });
+    last_line_clear.set_rc(last_line_clear.get()); // TODO: refactor to util
     util::notify_subscribers(bag);
 }
 
@@ -371,4 +408,32 @@ impl InputStates {
             _ => None,
         }
     }
+}
+
+// TODO: extract to file?
+pub trait Goal {
+    fn reached(&self) -> bool;
+
+    fn display(&self) -> String;
+}
+
+pub struct LinesGoal<'a> {
+    n_lines: &'a Signal<u32>,
+    n_cleared: &'a ReadSignal<u32>,
+}
+
+impl<'a> LinesGoal<'a> {
+    pub fn new(cx: Scope<'a>, clear_type: &'a Signal<Option<LineClear>>, n_lines: &'a Signal<u32>) -> Self {
+        let new_lines_cleared = clear_type.map(cx, |c| c.as_ref().map(|c| c.n_lines()).unwrap_or(0) as u32);
+        let n_cleared = create_signal(cx, 0);
+        create_effect(cx, || n_cleared.modify().add_assign(*new_lines_cleared.get()));
+
+        LinesGoal { n_lines, n_cleared }
+    }
+}
+
+impl<'a> Goal for LinesGoal<'a> {
+    fn reached(&self) -> bool { self.n_lines.get() <= self.n_cleared.get() }
+
+    fn display(&self) -> String { format!("{}/{}", self.n_cleared.get(), self.n_lines.get()) }
 }

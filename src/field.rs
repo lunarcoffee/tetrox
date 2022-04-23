@@ -1,6 +1,10 @@
 use std::collections::HashSet;
 
-use crate::{Coords, CoordsFloat, PieceKind, Randomizer, kicks::{KickTable, KickTable180, RotationState}, spins::SpinDetector};
+use crate::{
+    kicks::{KickTable, KickTable180, RotationState},
+    spins::SpinDetector,
+    Coords, CoordsFloat, PieceKind, Randomizer,
+};
 
 #[derive(Copy, Clone)]
 pub enum Square {
@@ -240,6 +244,8 @@ impl DefaultField {
     }
 
     pub fn topped_out(&self) -> bool { self.topped_out }
+
+    pub fn top_out(&mut self) { self.topped_out = true; }
 
     pub fn cur_piece(&self) -> &LivePiece { &self.cur_piece }
 

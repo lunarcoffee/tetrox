@@ -4,7 +4,7 @@ use std::{
     str::FromStr,
 };
 
-use crate::{game::Game, util};
+use crate::{game::Game, util::{self, Padding}};
 
 use bimap::BiMap;
 use serde::{Deserialize, Serialize};
@@ -347,11 +347,6 @@ struct InputLabelProps<'a, T: Display + 'static> {
 #[component]
 fn InputLabel<'a, T: Display + 'static, G: Html>(cx: Scope<'a>, props: InputLabelProps<'a, T>) -> View<G> {
     view! { cx, p(class="config-option-label") { (props.label) " (" (props.value.get()) "):" } }
-}
-
-#[component]
-fn Padding<'a, G: Html>(cx: Scope<'a>, px: usize) -> View<G> {
-    view! { cx, div(style=format!("min-height: {}px;", px)) }
 }
 
 #[derive(Clone)]
