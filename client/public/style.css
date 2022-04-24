@@ -2,6 +2,7 @@
     font-family: "IBM Plex Sans";
 
     outline: none;
+    user-select: none;
 }
 
 body {
@@ -37,13 +38,6 @@ body {
     display: none;
 }
 
-.content {
-    height: 100vh;
-    width: 100vw;
-
-    margin: auto;
-}
-
 .bg-gradient {
     position: absolute;
     top: 0;
@@ -56,6 +50,69 @@ body {
     z-index: -1;
 }
 
+.content {
+    height: 100vh;
+    width: 100vw;
+
+    margin: 0;
+}
+
+.logo {
+    color: #dddddd55;
+    font-size: 3em;
+
+    margin: 1px 0 -6px 0;
+    padding: 0;
+}
+
+.menu {
+    padding: 12px 5vw 16px 0;
+    margin-left: 20px;
+
+    width: 16vw;
+    height: calc(100vh - 28px);
+
+    position: fixed;
+    top: 0;
+    left: 0;
+
+    z-index: 1;
+}
+
+.preset-list-heading {
+    color: #ccc;
+    font-size: 1.05rem;
+    font-family: "Roboto Condensed";
+    font-weight: bold;
+
+    margin: 20px 0 12px 0;
+}
+
+.preset-button-text {
+    color: #ccc;
+    background: #b8b8b833;
+    font-size: 0.8rem;
+
+    width: 12rem;
+
+    padding: 6px 0 6px 40px;
+    margin: 10px 0 10px -40px;
+    border-radius: 0% 4px 28px 0% / 0% 4px calc(100% - 4px) 0%;
+
+    cursor: pointer;
+    transition: background-color 0.1s, margin-left 0.1s;
+}
+
+.preset-button-text:hover {
+    background: #dddddd33;
+    margin-left: -30px;
+}
+
+.preset-button-text:active {
+    background: #ffffff33;
+    margin-left: -20px;
+}
+
 .config-panel {
     color: #ccc;
 
@@ -65,7 +122,7 @@ body {
     justify-self: flex-end;
     text-align: right;
 
-    padding: 12px 28px 16px 5vw;
+    padding: 12px 24px 16px 5vw;
     width: 16vw;
     height: calc(100vh - 28px);
 
@@ -213,7 +270,7 @@ body {
     margin: 2.5rem 0 -0.5rem 0;
 }
 
-.time-elapsed {
+.game-stats-display {
     color: #ccc !important;
     font-size: 1.8rem;
     margin: -14px 0 0 0;
@@ -243,4 +300,7 @@ body {
     border-radius: 4px;
 
     box-shadow: 0 0 36px 0 #000000bb;
+}
+
+box-shadow: 0 0 36px 0 #000000bb;
 }

@@ -5,8 +5,7 @@ use std::{
 };
 
 use crate::{
-    game::Game,
-    goal::{self, Goal},
+    menu::Menu,
     util::{self, Padding},
 };
 
@@ -24,7 +23,6 @@ use sycamore::{
 };
 
 use tetrox::{
-    field::LineClear,
     kicks::{AscKickTable, BasicKickTable, KickTable, KickTable180, SrsKickTable, TetrIo180KickTable},
     pieces::{
         mino123::Mino123,
@@ -104,6 +102,10 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
         ($($field:ident; $msg:ident),+) => { $(
             let $field = create_signal(cx, config.get().borrow().$field.clone());
             create_effect(cx, move || updater(ConfigMsg::$msg((*$field.get()).clone())));
+
+            // react to external config updates
+            let selector = util::create_config_selector(cx, config, |c| c.$field.clone());
+            create_effect(cx, || $field.set((*selector.get()).clone()));
         )* }
     }
     gen_config_signals! {
@@ -142,7 +144,7 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
 
     view! { cx,
         div(class="content") {
-            Game {}
+            Menu {}
             div(class="config-panel") {
                 SectionHeading("Gameplay")
                 RangeInput { label: "Gravity delay", min: 0, max: 5_000, step: 5, value: gravity_delay }
@@ -171,11 +173,11 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
                 Padding(4)
                 (match *goal_type.get() {
                     GoalTypes::LinesCleared => view! { cx,
-                        Padding(4)
+                        Padding(2)
                         RangeInput { label: "Lines cleared", min: 1, max: 1_000, step: 1, value: goal_n_lines }
                     },
                     GoalTypes::TimeLimit => view! { cx, 
-                        Padding(4)
+                        Padding(2)
                         RangeInput { label: "Time limit", min: 5, max: 3_600, step: 1, value: goal_time_limit_secs }
                     },
                     _ => view! { cx, }

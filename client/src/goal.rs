@@ -10,6 +10,7 @@ use tetrox::field::LineClear;
 
 use crate::{config::Config, util};
 
+// a goal for completion of a game (e.g. clear 40 lines)
 pub struct Goal<'a, G: Html>(&'a ReadSignal<bool>, View<G>, bool);
 
 impl<'a, G: Html> Goal<'a, G> {
@@ -40,7 +41,7 @@ pub fn lines_cleared<'a, G: Html>(
 
     let view = view! { cx,
         p(class="game-stats-label") { "LINES" }
-        p(class="time-elapsed", style="direction: ltr;") { (format!("{}/{}", n_cleared.get(), n_lines.get())) }
+        p(class="game-stats-display", style="direction: ltr;") { (format!("{}/{}", n_cleared.get(), n_lines.get())) }
     };
 
     Goal(completed, view, true)
@@ -52,13 +53,14 @@ pub fn time_limit<'a, G: Html>(
     config: &'a Signal<RefCell<Config>>,
     time_elapsed: &'a Signal<f64>,
 ) -> Goal<'a, G> {
+    // remaining time
     let limit_millis = util::create_config_selector(cx, config, |c| c.goal_time_limit_secs * 1_000);
     let time_remaining = time_elapsed.map(cx, |t| (*limit_millis.get() as f64) - t);
     let completed = create_selector(cx, || *time_remaining.get() <= 0.0);
 
     let view = view! { cx,
         p(class="game-stats-label") { "TIME LEFT" }
-        p(class="time-elapsed", style="direction: ltr;") { (util::format_duration(*time_remaining.get())) }
+        p(class="game-stats-display", style="direction: ltr;") { (util::format_duration(*time_remaining.get())) }
     };
 
     Goal(completed, view, false)

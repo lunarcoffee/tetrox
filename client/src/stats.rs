@@ -96,6 +96,14 @@ pub fn Stats<'a, G: Html>(cx: Scope<'a>, props: StatsProps<'a, G>) -> View<G> {
         });
     });
 
+    // reset combo and b2b when the board is reset (if `line_clear` is `None`)
+    create_effect(cx, || {
+        if line_clear.get().is_none() {
+            combo.take();
+            b2b.take();
+        }
+    });
+
     let time_elapsed = use_context::<Signal<f64>>(cx);
 
     view! { cx,
@@ -106,7 +114,7 @@ pub fn Stats<'a, G: Html>(cx: Scope<'a>, props: StatsProps<'a, G>) -> View<G> {
         (if goal.get().show_elapsed_time() {
             view! { cx,
                 p(class="game-stats-label") { "TIME" }
-                p(class="time-elapsed", style="direction: ltr;") { (util::format_duration(*time_elapsed.get())) }
+                p(class="game-stats-display", style="direction: ltr;") { (util::format_duration(*time_elapsed.get())) }
             }
         } else {
             view! { cx, }

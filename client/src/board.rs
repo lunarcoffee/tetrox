@@ -198,9 +198,9 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>) -> View<G> {
             time_elapsed.set(0.0);
             start_time.set(Date::now());
 
+            // don't start lock delay timer
             elapsed_timer.get().start();
             gravity_timer.get().start();
-            // don't start lock delay timer
         }
     });
 

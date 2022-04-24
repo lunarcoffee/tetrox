@@ -7,7 +7,7 @@ use tetrox::pieces::{tetromino::TetrominoSrs, PieceKindTrait};
 mod board;
 mod canvas;
 mod config;
-mod game;
+mod menu;
 mod stats;
 mod util;
 mod timer;
