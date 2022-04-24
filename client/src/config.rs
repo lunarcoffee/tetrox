@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     menu::Menu,
-    util::{self, Padding},
+    util::{self, Padding, SectionHeading},
 };
 
 use bimap::BiMap;
@@ -136,7 +136,7 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
 
     macro_rules! keybind_capture_buttons {
         ($($label:expr; $input:ident),*) => { view! { cx,
-            div(class="config-button-box") {
+            div(class="menu-button-box") {
                 $(InputCaptureButton { label: $label, input: Input::$input, keybinds })*
             }
         } }
@@ -150,7 +150,7 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
                 RangeInput { label: "Gravity delay", min: 0, max: 5_000, step: 5, value: gravity_delay }
                 RangeInput { label: "Lock delay", min: 10, max: 3_000, step: 5, value: lock_delay }
                 RangeInput { label: "Move limit", min: 1, max: 100, step: 1, value: move_limit }
-                div(class="config-button-box") {
+                div(class="menu-button-box") {
                     ToggleButton { label: "Topping out", value: topping_out_enabled }
                     ToggleButton { label: "Lock delay", value: auto_lock_enabled }
                     ToggleButton { label: "Gravity", value: gravity_enabled }
@@ -234,7 +234,7 @@ where
     } = props;
 
     view! { cx,
-        div(class="config-option") {
+        div(class="menu-option") {
             InputLabel { label, value }
             input(
                 type="range",
@@ -265,8 +265,8 @@ where
     let items = create_signal(cx, items);
 
     view! { cx,
-        div(class="config-option") {
-            label(class="config-option-label") { (label) ":" }
+        div(class="menu-option") {
+            label(class="menu-option-label") { (label) ":" }
             select(
                 on:input=|e: Event| {
                     let new_label = e.target().unwrap().dyn_into::<HtmlSelectElement>().unwrap().value();
@@ -298,10 +298,10 @@ fn ToggleButton<'a, G: Html>(cx: Scope<'a>, props: ToggleButtonProps<'a>) -> Vie
     let label = value.map(cx, move |v| format!("{} ({})", label, if *v { "on" } else { "off" }));
 
     view! { cx,
-        div(class="config-option") {
+        div(class="menu-option") {
             input(
                 type="button",
-                class=format!("config-toggle-button-{}", label),
+                class=format!("menu-toggle-button-{}", label),
                 value=label.get(),
                 on:click=|_| value.set(!*value.get()),
             )
@@ -339,7 +339,7 @@ fn InputCaptureButton<'a, G: Html>(cx: Scope<'a>, props: InputCaptureButtonProps
     });
 
     view! { cx,
-        div(class="config-option") {
+        div(class="menu-option") {
             input(
                 type="button",
                 value=label.get(),
@@ -359,11 +359,6 @@ fn InputCaptureButton<'a, G: Html>(cx: Scope<'a>, props: InputCaptureButtonProps
     }
 }
 
-#[component]
-fn SectionHeading<'a, G: Html>(cx: Scope<'a>, section: &'static str) -> View<G> {
-    view! { cx, p(class="config-heading") { (section.to_uppercase()) } }
-}
-
 #[derive(Prop)]
 struct InputLabelProps<'a, T: Display + 'static> {
     label: &'static str,
@@ -372,7 +367,7 @@ struct InputLabelProps<'a, T: Display + 'static> {
 
 #[component] // TODO: enable editing text
 fn InputLabel<'a, T: Display + 'static, G: Html>(cx: Scope<'a>, props: InputLabelProps<'a, T>) -> View<G> {
-    view! { cx, p(class="config-option-label") { (props.label) " (" (props.value.get()) "):" } }
+    view! { cx, p(class="menu-option-label") { (props.label) " (" (props.value.get()) "):" } }
 }
 
 #[derive(Clone)]

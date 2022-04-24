@@ -62,12 +62,6 @@ where
     create_selector(cx, move || op(&config.get().borrow()))
 }
 
-// vertical padding
-#[component]
-pub fn Padding<'a, G: Html>(cx: Scope<'a>, px: usize) -> View<G> {
-    view! { cx, div(style=format!("min-height: {}px;", px)) }
-}
-
 pub fn format_duration(millis: f64) -> String {
     let time = Duration::from_millis(millis as u64);
 
@@ -76,4 +70,16 @@ pub fn format_duration(millis: f64) -> String {
     let mins = time.as_secs() / 60;
 
     format!("{}:{:02}.{:03}", mins, secs, millis)
+}
+
+// vertical padding
+#[component]
+pub fn Padding<'a, G: Html>(cx: Scope<'a>, px: usize) -> View<G> {
+    view! { cx, div(style=format!("min-height: {}px;", px)) }
+}
+
+// menu/config section heading
+#[component]
+pub fn SectionHeading<'a, G: Html>(cx: Scope<'a>, section: &'static str) -> View<G> {
+    view! { cx, p(class="section-heading") { (section.to_uppercase()) } }
 }

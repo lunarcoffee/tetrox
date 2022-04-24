@@ -46,7 +46,7 @@ body {
     width: 100vw;
     height: 100vh;
 
-    background: linear-gradient(to right, #00000080 0vw, transparent 26vw, transparent 74vw, #00000080 100vw);
+    background: linear-gradient(to right, #00000080 0vw, transparent 40vw, transparent 60vw, #00000080 100vw);
     z-index: -1;
 }
 
@@ -61,7 +61,7 @@ body {
     color: #dddddd55;
     font-size: 3em;
 
-    margin: 1px 0 -6px 0;
+    margin: 1px 0 12px 0;
     padding: 0;
 }
 
@@ -79,7 +79,7 @@ body {
     z-index: 1;
 }
 
-.preset-list-heading {
+.mode-list-heading {
     color: #ccc;
     font-size: 1.05rem;
     font-family: "Roboto Condensed";
@@ -88,12 +88,12 @@ body {
     margin: 20px 0 12px 0;
 }
 
-.preset-button-text {
+.mode-button-text {
     color: #ccc;
     background: #b8b8b833;
     font-size: 0.8rem;
 
-    width: 12rem;
+    width: 13rem;
 
     padding: 6px 0 6px 40px;
     margin: 10px 0 10px -40px;
@@ -103,12 +103,12 @@ body {
     transition: background-color 0.1s, margin-left 0.1s;
 }
 
-.preset-button-text:hover {
+.mode-button-text:hover {
     background: #dddddd33;
     margin-left: -30px;
 }
 
-.preset-button-text:active {
+.mode-button-text:active {
     background: #ffffff33;
     margin-left: -20px;
 }
@@ -142,7 +142,7 @@ body {
     display: none;
 }
 
-.config-heading {
+.section-heading {
     color: #ddd;
     font-family: "Roboto Condensed";
 
@@ -152,13 +152,14 @@ body {
     margin: 14px 0;
 }
 
-.config-option-label {
+.menu-option-label {
     font-size: 0.8rem;
     margin: 0;
 }
 
-.config-option>select {
-    background-color: #f3f3f399;
+.menu-option>select {
+    background-color: #b8b8b833;
+    color: #ccc;
     border: none;
     border-radius: 4px;
 
@@ -170,12 +171,13 @@ body {
     transition: background-color 0.1s;
 }
 
-.config-option>select:hover {
-    background-color: #e0e0e099;
+.menu-option>select:hover {
+    background-color: #dddddd33;
 }
 
-.config-option>input[type=button] {
-    background-color: #f3f3f399;
+.menu-option>input[type=button] {
+    background-color: #b8b8b833;
+    color: #ccc;
     border: none;
     border-radius: 4px;
 
@@ -187,15 +189,19 @@ body {
     transition: background-color 0.1s;
 }
 
-.config-option>input[type=button]:hover {
-    background-color: #e0e0e099;
+.menu-option-l>input[type=button] {
+    margin: 2px 4px 2px 0 !important;
 }
 
-.config-option>input[type=button]:active {
-    background-color: #d1d1d199;
+.menu-option>input[type=button]:hover {
+    background-color: #dddddd33;
 }
 
-.config-button-box {
+.menu-option>input[type=button]:active {
+    background-color: #ffffff33;
+}
+
+.menu-button-box {
     margin-bottom: 6px;
 
     display: inline-flex;
@@ -203,8 +209,8 @@ body {
     flex-direction: row-reverse;
 }
 
-.config-reset-button {
-    filter: hue-rotate(90deg) saturate(300%);
+.menu-button-box-l {
+    flex-direction: row;
 }
 
 .game {
@@ -300,7 +306,4 @@ body {
     border-radius: 4px;
 
     box-shadow: 0 0 36px 0 #000000bb;
-}
-
-box-shadow: 0 0 36px 0 #000000bb;
 }
