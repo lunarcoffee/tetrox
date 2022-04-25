@@ -1,6 +1,6 @@
 use crate::{
     canvas::{self, Field, HoldPiece, NextQueue},
-    config::{Config, GoalTypes, Input, SpinTypes},
+    config::{Config, GoalTypes, Input, SpinTypes, UiEnabled},
     goal,
     stats::Stats,
     timer::{self, Timer},
@@ -240,6 +240,8 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>) -> View<G> {
         bag.set(RefCell::new(new_bag));
     };
 
+    let ui_enabled = use_context::<Signal<UiEnabled>>(cx);
+
     let keydown_handler = move |e: Event| {
         let e = e.dyn_into::<KeyboardEvent>().unwrap();
         let c = config.get();
@@ -255,6 +257,7 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>) -> View<G> {
             // actions possible after topping out
             match input {
                 Input::Reset => reset_board(),
+                Input::ShowHideUi => ui_enabled.set((!**ui_enabled.get()).into()),
                 _ => {}
             }
 

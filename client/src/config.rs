@@ -1,7 +1,9 @@
 use std::{
     cell::RefCell,
     fmt::{self, Display},
+    ops::Deref,
     str::FromStr,
+    time::Duration,
 };
 
 use crate::{
@@ -14,9 +16,10 @@ use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use sycamore::{
-    component,
+    component, easing,
     generic_node::Html,
-    prelude::{create_effect, create_signal, provide_context_ref, Keyed, ReadSignal, Scope, Signal},
+    motion::create_tweened_signal,
+    prelude::{create_effect, create_memo, create_signal, provide_context_ref, Keyed, ReadSignal, Scope, Signal},
     view,
     view::View,
     Prop,
@@ -142,10 +145,18 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
         } }
     }
 
+    let ui_offset = create_tweened_signal(cx, 0.0, Duration::from_millis(150), easing::quart_inout);
+    let config_style = create_memo(cx, || format!("margin-right: -{}rem;", ui_offset.get()));
+
+    let ui_enabled = create_signal(cx, UiEnabled(true));
+    provide_context_ref(cx, ui_enabled);
+    create_effect(cx, || ui_offset.set(if **ui_enabled.get() { 0.0 } else { 15.0 }));
+
     view! { cx,
         div(class="content") {
-            Menu {}
-            div(class="config-panel") {
+            Menu { ui_offset }
+
+            div(class="config-panel", style=config_style.get()) {
                 SectionHeading("Gameplay")
                 RangeInput { label: "Gravity delay", min: 0, max: 5_000, step: 5, value: gravity_delay }
                 RangeInput { label: "Lock delay", min: 10, max: 3_000, step: 5, value: lock_delay }
@@ -176,7 +187,7 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
                         Padding(2)
                         RangeInput { label: "Lines cleared", min: 1, max: 1_000, step: 1, value: goal_n_lines }
                     },
-                    GoalTypes::TimeLimit => view! { cx, 
+                    GoalTypes::TimeLimit => view! { cx,
                         Padding(2)
                         RangeInput { label: "Time limit", min: 5, max: 3_600, step: 1, value: goal_time_limit_secs }
                     },
@@ -616,4 +627,16 @@ enum ConfigMsg {
     SoftDropRate(u32),
 
     _ToggleUi,
+}
+
+pub struct UiEnabled(bool);
+
+impl Deref for UiEnabled {
+    type Target = bool;
+
+    fn deref(&self) -> &Self::Target { &self.0 }
+}
+
+impl From<bool> for UiEnabled {
+    fn from(b: bool) -> Self { UiEnabled(b) }
 }

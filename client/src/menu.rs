@@ -9,10 +9,10 @@ use crate::{
 use sycamore::{
     component,
     generic_node::Html,
-    prelude::{use_context, ReadSignal, Scope, Signal},
+    prelude::{use_context, ReadSignal, Scope, Signal, create_memo},
     view,
     view::View,
-    Prop,
+    Prop, motion::Tweened,
 };
 use sycamore_router::{HistoryIntegration, Route, Router};
 
@@ -24,8 +24,13 @@ pub enum Routes {
     NotFound,
 }
 
+#[derive(Prop)]
+pub struct MenuProps<'a> {
+    ui_offset: &'a Tweened<'a, f64>,
+}
+
 #[component]
-pub fn Menu<'a, G: Html>(cx: Scope<'a>) -> View<G> {
+pub fn Menu<'a, G: Html>(cx: Scope<'a>, props: MenuProps<'a>) -> View<G> {
     let lines_cleared_preset = move |label, n_lines| view! { cx, GoalPresetButton { label, goal_type: GoalTypes::LinesCleared, n_lines, time_limit_secs: 0 } };
     let time_limit_preset = move |label, time_limit_secs| view! { cx, GoalPresetButton { label, goal_type: GoalTypes::TimeLimit, n_lines: 0, time_limit_secs } };
 
@@ -53,13 +58,16 @@ pub fn Menu<'a, G: Html>(cx: Scope<'a>) -> View<G> {
         }
     };
 
+    let ui_offset = props.ui_offset;
+    let menu_style = create_memo(cx, || format!("margin-left: calc(-{}rem + 20px);", ui_offset.get()));
+
     view! { cx,
         Router {
             integration: HistoryIntegration::new(),
             view: move |cx, route: &ReadSignal<Routes>| {
                 view! { cx,
                     div(class="content") {
-                        div(class="menu") { (menu) }
+                        div(class="menu", style=menu_style.get()) { (menu) }
                         (match route.get().as_ref() {
                             Routes::Home => view! { cx, Board {} },
                             Routes::NotFound => view! { cx, p(class="loading-text") { "not found" } }
