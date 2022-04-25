@@ -145,12 +145,12 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
         } }
     }
 
-    let ui_offset = create_tweened_signal(cx, 0.0, Duration::from_millis(150), easing::quart_inout);
+    let ui_offset = create_tweened_signal(cx, 0.0, Duration::from_millis(200), easing::quart_inout);
     let config_style = create_memo(cx, || format!("margin-right: -{}rem;", ui_offset.get()));
 
     let ui_enabled = create_signal(cx, UiEnabled(true));
     provide_context_ref(cx, ui_enabled);
-    create_effect(cx, || ui_offset.set(if **ui_enabled.get() { 0.0 } else { 15.0 }));
+    create_effect(cx, || ui_offset.set(if **ui_enabled.get() { 0.0 } else { 20.0 }));
 
     view! { cx,
         div(class="content") {
