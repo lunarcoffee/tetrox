@@ -18,7 +18,7 @@ impl PieceKindTrait for Mino123 {
         match self {
             Mino123::Monomino => vec![(0, 0)],
             Mino123::Domino => vec![(0, 0), (0, 1)],
-            Mino123::LTromino => vec![(-1, 0), (0, 1), (-1, 1)],
+            Mino123::LTromino => vec![(0, 0), (0, 1), (-1, 1)],
             Mino123::ITromino => vec![(0, -1), (0, 0), (0, 1)],
         }
         .into_iter()
@@ -38,8 +38,7 @@ impl PieceKindTrait for Mino123 {
                     RotationState::Ccw => CoordsFloat(-0.5, 0.5),
                 },
             ),
-            Mino123::LTromino => (2, CoordsFloat::zero()),
-            Mino123::ITromino => (1, CoordsFloat::zero()),
+            _ => (1, CoordsFloat::zero()),
         }
     }
     
