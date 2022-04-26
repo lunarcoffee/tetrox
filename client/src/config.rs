@@ -145,6 +145,13 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
         } }
     }
 
+    let max_queue_len = piece_type.map(cx, |p| p.kinds().len());
+    create_effect(cx, || queue_len.set((*queue_len.get()).clamp(0, *max_queue_len.get()))); // TODO: clamp effect factory?
+    let queue_len_input = max_queue_len.map(cx, move |l| {
+        view! { cx, RangeInput { label: "Queue length", min: 0, max: *l, step: 1, value: queue_len } }
+    });
+
+    // ui style
     let ui_offset = create_tweened_signal(cx, 0.0, Duration::from_millis(200), easing::quart_inout);
     let config_style = create_memo(cx, || format!("margin-right: -{}rem;", ui_offset.get()));
 
@@ -172,7 +179,7 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
                 SectionHeading("Playfield")
                 RangeInput { label: "Field width", min: 4, max: 100, step: 1, value: field_width }
                 RangeInput { label: "Field height", min: 3, max: 100, step: 1, value: field_hidden }
-                RangeInput { label: "Queue length", min: 0, max: 7, step: 1, value: queue_len }
+                (*queue_len_input.get())
                 SelectInput { label: "Piece kind", items: piece_kind_items, value: piece_type }
                 SelectInput { label: "Spin detection", items: spin_type_items, value: spin_types }
                 SelectInput { label: "Kick table", items: kick_table_items, value: kick_table }
