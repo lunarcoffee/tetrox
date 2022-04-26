@@ -106,10 +106,8 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>) -> View<G> {
 
         timer::create_timer_finish_effect(cx, timer, move || {
             let state = inputs.get_untracked().borrow().get_state(&input);
-            if state.is_held() {
-                if state.is_pressed() {
-                    util::with_signal_mut_untracked(field_signal, |field| action.get()(field));
-                }
+            if state.is_pressed() {
+                util::with_signal_mut_untracked(field_signal, |field| action.get()(field));
             }
             state.is_held() // continue the timer loop if the input is held (pressed or suppressed)
         });
