@@ -65,6 +65,17 @@ body {
     padding: 0;
 }
 
+.unfocused-warning {
+    color: #f53131e1;
+    font-size: 3rem;
+    font-family: "Roboto Condensed";
+
+    position: fixed;
+    top: 42vh;
+    width: auto;
+    margin: auto;
+}
+
 .menu {
     padding: 12px 5vw 16px 0;
     margin-left: 20px;

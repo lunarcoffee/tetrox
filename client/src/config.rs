@@ -95,7 +95,8 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
                 kick_table_180; KickTable180, goal_type; GoalType, goal_n_lines; GoalNLines,
                 goal_time_limit_secs; GoalTimeLimitSecs, skin_name; SkinName, field_zoom; FieldZoom,
                 vertical_offset; VerticalOffset, shadow_opacity; ShadowOpacity, keybinds; Keybinds,
-                delayed_auto_shift; DelayedAutoShift, auto_repeat_rate; AutoRepeatRate, soft_drop_rate; SoftDropRate
+                delayed_auto_shift; DelayedAutoShift, auto_repeat_rate; AutoRepeatRate, soft_drop_rate; SoftDropRate,
+                timer_interval; TimerInterval, focus_warning_enabled; FocusWarningEnabled
             }
         });
     };
@@ -118,7 +119,8 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
         piece_type; PieceType, spin_types; SpinType, kick_table; KickTable, kick_table_180; KickTable180,
         goal_type; GoalType, goal_n_lines; GoalNLines, goal_time_limit_secs; GoalTimeLimitSecs, skin_name; SkinName,
         field_zoom; FieldZoom, vertical_offset; VerticalOffset, shadow_opacity; ShadowOpacity, keybinds; Keybinds,
-        delayed_auto_shift; DelayedAutoShift, auto_repeat_rate; AutoRepeatRate, soft_drop_rate; SoftDropRate
+        delayed_auto_shift; DelayedAutoShift, auto_repeat_rate; AutoRepeatRate, soft_drop_rate; SoftDropRate,
+        timer_interval; TimerInterval, focus_warning_enabled; FocusWarningEnabled
     };
 
     // make label and item pair list for the select inputs
@@ -220,6 +222,12 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
                 RangeInput { label: "DAS", min: 0, max: 500, step: 1, value: delayed_auto_shift }
                 RangeInput { label: "ARR", min: 0, max: 500, step: 1, value: auto_repeat_rate }
                 RangeInput { label: "SDR", min: 0, max: 500, step: 1, value: soft_drop_rate }
+
+                SectionHeading("Misc")
+                RangeInput { label: "Timer accuracy", min: 16, max: 1_000, step: 1, value: timer_interval }
+                div(class="menu-button-box") {
+                    ToggleButton { label: "Show focus warning", value: focus_warning_enabled }
+                }
             }
         }
     }
@@ -540,6 +548,10 @@ pub struct Config {
     pub delayed_auto_shift: u32,
     pub auto_repeat_rate: u32,
     pub soft_drop_rate: u32,
+
+    // misc
+    pub timer_interval: u32,
+    pub focus_warning_enabled: bool,
 }
 
 impl Config {
@@ -597,6 +609,9 @@ impl Default for Config {
             delayed_auto_shift: 280,
             auto_repeat_rate: 50,
             soft_drop_rate: 30,
+
+            timer_interval: 33,
+            focus_warning_enabled: true,
         }
     }
 }
@@ -633,7 +648,8 @@ enum ConfigMsg {
     AutoRepeatRate(u32),
     SoftDropRate(u32),
 
-    _ToggleUi,
+    TimerInterval(u32),
+    FocusWarningEnabled(bool),
 }
 
 pub struct UiEnabled(bool);

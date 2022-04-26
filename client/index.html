@@ -13,6 +13,16 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet">
+
+    <script>
+        // focus the board
+        (function focusBoard() {
+            setTimeout(() => {
+                let board = document.getElementsByClassName("game")[0];
+                if (board != undefined) { board.focus(); } else { focusBoard(); }
+            }, 33);
+        })();
+    </script>
 </head>
 
 </html>

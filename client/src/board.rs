@@ -27,7 +27,7 @@ use tetrox::{
     Randomizer, SingleBag,
 };
 use wasm_bindgen::JsCast;
-use web_sys::{Event, HtmlImageElement, KeyboardEvent};
+use web_sys::{Event, HtmlElement, HtmlImageElement, KeyboardEvent};
 
 #[component]
 pub fn Board<'a, G: Html>(cx: Scope<'a>) -> View<G> {
@@ -74,6 +74,9 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>) -> View<G> {
         time_elapsed.set(Date::now() - *start_time.get());
         true
     });
+
+    let timer_interval = util::create_config_selector(cx, config, |c| c.timer_interval);
+    create_effect(cx, || elapsed_timer.get().set_duration(*timer_interval.get()));
 
     // loop timer durations
     let das_arr = util::create_config_selector(cx, config, |c| (c.delayed_auto_shift, c.auto_repeat_rate));
@@ -329,8 +332,28 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>) -> View<G> {
     let style_values = util::create_config_selector(cx, config, |c| (c.field_zoom * 100.0, c.vertical_offset));
     let game_style = style_values.map(cx, |d| format!("transform: scale({}%); margin-top: {}px;", d.0, d.1));
 
+    // opacity of unfocused warning overlay text
+    let focus_warning_opacity = create_signal(cx, 0.0);
+    let focus_warning_style = focus_warning_opacity.map(cx, |o| format!("opacity: {};", o));
+    let focus_warning_enabled = util::create_config_selector(cx, config, |c| c.focus_warning_enabled);
+
     view! { cx,
-        div(class="game", tabindex="0", style=game_style.get(), on:keydown=keydown_handler, on:keyup=keyup_handler) {
+        div(
+            class="game",
+            tabindex="0",
+            style=game_style.get(),
+            on:keydown=keydown_handler,
+            on:keyup=keyup_handler,
+            on:focusin=|_| focus_warning_opacity.set(0.0),
+            on:focusout=|_| focus_warning_opacity.set(1.0),
+        ) {
+            // board unfocused warning overlay
+            (if *focus_warning_enabled.get() {
+                view! { cx, div(class="unfocused-warning", style=focus_warning_style.get()) { "out of focus" } }
+            } else {
+                view! { cx, }
+            })
+
             div(class="field-panel") {
                 div(class="hold-piece") { HoldPiece {} }
                 div(class="game-stats") { Stats { last_line_clear, goal } }

@@ -75,4 +75,8 @@ impl<'a> Timer<'a> {
         self.0.borrow_mut().timeout.take().map(|t| t.cancel());
         self.0.borrow().is_finished.set(false);
     }
+
+    pub fn set_duration(&self, duration: u32) {
+        self.0.borrow_mut().duration = duration;
+    }
 }
