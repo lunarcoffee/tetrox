@@ -67,13 +67,18 @@ body {
 
 .unfocused-warning {
     color: #f53131e1;
-    font-size: 3rem;
+    font-size: 2.5rem;
     font-family: "Roboto Condensed";
+    text-shadow: 0 0 6px;
 
     position: fixed;
-    top: 42vh;
+    top: 39.5vh;
     width: auto;
+
     margin: auto;
+    padding: 18px 24px;
+    border: 3px solid;
+    border-radius: 8px;
 }
 
 .menu {

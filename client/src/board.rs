@@ -27,7 +27,7 @@ use tetrox::{
     Randomizer, SingleBag,
 };
 use wasm_bindgen::JsCast;
-use web_sys::{Event, HtmlElement, HtmlImageElement, KeyboardEvent};
+use web_sys::{Event, HtmlImageElement, KeyboardEvent};
 
 #[component]
 pub fn Board<'a, G: Html>(cx: Scope<'a>) -> View<G> {
@@ -342,10 +342,8 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>) -> View<G> {
             class="game",
             tabindex="0",
             style=game_style.get(),
-            on:keydown=keydown_handler,
-            on:keyup=keyup_handler,
-            on:focusin=|_| focus_warning_opacity.set(0.0),
-            on:focusout=|_| focus_warning_opacity.set(1.0),
+            on:keydown=keydown_handler, on:keyup=keyup_handler,
+            on:focusin=|_| focus_warning_opacity.set(0.0), on:focusout=|_| focus_warning_opacity.set(1.0),
         ) {
             // board unfocused warning overlay
             (if *focus_warning_enabled.get() {

@@ -2,7 +2,7 @@ use std::{cell::RefCell, mem};
 
 use gloo_timers::callback::Timeout;
 use sycamore::{
-    motion::{create_raf, create_tweened_signal},
+    motion::create_raf,
     prelude::{create_effect, create_signal, use_scope_status, ReadSignal, Scope, Signal},
 };
 
