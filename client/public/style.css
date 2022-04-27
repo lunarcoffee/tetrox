@@ -67,6 +67,8 @@ body {
 
 .unfocused-warning {
     color: #f53131e1;
+    background: #00000044;
+
     font-size: 2.5rem;
     font-family: "Roboto Condensed";
     text-shadow: 0 0 6px;

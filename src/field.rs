@@ -133,7 +133,7 @@ impl LivePiece {
     // shadow piece, hard drop position, etc.
     pub fn projected_down(&self, field: &DefaultField) -> LivePiece {
         let shifted = self.shifted(1, 0);
-        if shifted.is_blocked(Some(&self), field) {
+        if shifted.is_blocked(Some(field.cur_piece()), field) {
             LivePiece {
                 coords: self.coords.clone(),
                 ..(*self)

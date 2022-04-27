@@ -3,12 +3,13 @@ use crate::{kicks::RotationState, Coords, CoordsFloat};
 use self::{
     mino123::Mino123,
     mino1234::Mino1234,
-    tetromino::{TetrominoAsc, TetrominoSrs},
+    tetromino::{TetrominoAsc, TetrominoSrs}, pentomino::Pentomino,
 };
 
 pub mod mino123;
 pub mod mino1234;
 pub mod tetromino;
+pub mod pentomino;
 
 pub trait PieceKindTrait {
     // coords of the squares composing the piece relative to the spawn coords
@@ -36,6 +37,7 @@ pub enum PieceKind {
     TetrominoAsc(TetrominoAsc),
     Mino123(Mino123),
     Mino1234(Mino1234),
+    Pentomino(Pentomino),
 }
 
 // generate match statement over all `PieceKind`s that calls a method, optionally with arguments
@@ -45,6 +47,7 @@ macro_rules! gen_piece_kind_match {
         PieceKind::TetrominoAsc(p) => p.$method($($arg,)*),
         PieceKind::Mino123(p) => p.$method($($arg,)*),
         PieceKind::Mino1234(p) => p.$method($($arg,)*),
+        PieceKind::Pentomino(p) => p.$method($($arg,)*),
     } }
 }
 

@@ -30,6 +30,7 @@ use tetrox::{
     pieces::{
         mino123::Mino123,
         mino1234::Mino1234,
+        pentomino::Pentomino,
         tetromino::{TetrominoAsc, TetrominoSrs},
         PieceKind, PieceKindTrait,
     },
@@ -129,7 +130,14 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
             [$($item_label,)*].into_iter().zip($enum_name::iter()).collect()
         }
     }
-    let piece_kind_items = gen_selector_items!(PieceTypes, "Tetromino SRS", "Tetromino ASC", "123Mino", "1234Mino");
+    let piece_kind_items = gen_selector_items!(
+        PieceTypes,
+        "Tetromino SRS",
+        "Tetromino ASC",
+        "123Mino",
+        "1234Mino",
+        "Pentomino"
+    );
     let kick_table_items = gen_selector_items!(KickTables, "SRS", "ASC", "Basic");
     let kick_table_180_items = gen_selector_items!(KickTable180s, "TETR.IO", "Basic");
     let spin_type_items = gen_selector_items!(SpinTypes, "T-Spins", "Immobile", "None");
@@ -463,6 +471,7 @@ pub enum PieceTypes {
     TetrominoAsc,
     Mino123,
     Mino1234,
+    Pentomino,
 }
 
 impl PieceTypes {
@@ -473,6 +482,7 @@ impl PieceTypes {
             PieceTypes::TetrominoAsc => <TetrominoAsc as PieceKindTrait>::iter(),
             PieceTypes::Mino123 => <Mino123 as PieceKindTrait>::iter(),
             PieceTypes::Mino1234 => <Mino1234 as PieceKindTrait>::iter(),
+            PieceTypes::Pentomino => <Pentomino as PieceKindTrait>::iter(),
         }
         .collect()
     }
@@ -498,14 +508,14 @@ impl KickTables {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize, EnumIter)]
 pub enum KickTable180s {
     TetrIo,
-    Lru,
+    Basic,
 }
 
 impl KickTable180s {
     pub fn table(&self) -> &dyn KickTable180 {
         match self {
             KickTable180s::TetrIo => &TetrIo180KickTable,
-            KickTable180s::Lru => &BasicKickTable,
+            KickTable180s::Basic => &BasicKickTable,
         }
     }
 }
