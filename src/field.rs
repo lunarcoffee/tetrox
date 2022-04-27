@@ -6,7 +6,7 @@ use crate::{
     Coords, CoordsFloat, PieceKind, Randomizer,
 };
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum Square {
     Empty,
     Filled(PieceKind),
@@ -18,7 +18,7 @@ impl Square {
     pub fn is_filled(&self) -> bool { matches!(self, Square::Filled(_)) }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Line {
     squares: Vec<Square>,
 }

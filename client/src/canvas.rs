@@ -10,7 +10,8 @@ use sycamore::{
 };
 use tetrox::{
     field::{DefaultField, Square},
-    Coords, Randomizer, pieces::PieceKind,
+    pieces::PieceKind,
+    Coords, Randomizer,
 };
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
@@ -81,9 +82,8 @@ pub fn Field<'a, G: Html>(cx: Scope<'a>) -> View<G> {
     let skin_name = util::create_config_selector(cx, config, |c| c.skin_name.clone());
 
     create_effect(cx, || {
-        let field_drawer_values = field_drawer_values.get();
         get_canvas_drawer(field_ref, &field.get().borrow(), asset_cache, skin_name)
-            .map(|c| c.draw_field(field_drawer_values.0, field_drawer_values.1));
+            .map(|c| c.draw_field(*field_dims.get(), *field_drawer_values.get()));
     });
 
     view
@@ -186,17 +186,17 @@ impl<'a> CanvasDrawer<'a> {
         }
     }
 
-    fn draw_field(&self, shadow_opacity: f64, topping_out_enabled: bool) {
+    fn draw_field(&self, (width, height, hidden): (usize, usize, usize), (shadow_opacity, topping_out): (f64, bool)) {
         let field = self.field;
 
         // field width and height in squares
-        let fw = field.width() as f64;
-        let fh = field.height() as f64;
+        let fw = width as f64;
+        let fh = height as f64;
 
         // units in pixels
         let fw_px = SQUARE_WIDTH as f64 * fw;
         let fh_px = SQUARE_WIDTH as f64 * fh;
-        let fhidden_end_px = (field.hidden() * SQUARE_WIDTH) as f64; // end of board hidden area
+        let fhidden_end_px = (hidden * SQUARE_WIDTH) as f64; // end of board hidden area
 
         let ctx = &self.context;
         ctx.set_fill_style(&"black".into());
@@ -210,7 +210,7 @@ impl<'a> CanvasDrawer<'a> {
         ctx.set_global_alpha(0.3);
 
         // vertical grid lines
-        for col in 1..field.width() {
+        for col in 1..width {
             ctx.begin_path();
             ctx.move_to((col * SQUARE_WIDTH) as f64, fhidden_end_px);
             ctx.line_to((col * SQUARE_WIDTH) as f64, fh_px);
@@ -218,7 +218,7 @@ impl<'a> CanvasDrawer<'a> {
         }
 
         // horizontal grid lines (only for non-hidden board area)
-        for row in field.hidden() + 1..field.height() {
+        for row in hidden + 1..height {
             ctx.begin_path();
             ctx.move_to(0.0, (row * SQUARE_WIDTH) as f64);
             ctx.line_to(fw_px, (row * SQUARE_WIDTH) as f64);
@@ -227,7 +227,7 @@ impl<'a> CanvasDrawer<'a> {
 
         ctx.set_global_alpha(shadow_opacity);
         let shadow_piece = field.shadow_piece();
-        let topped_out = field.topped_out() && topping_out_enabled;
+        let topped_out = field.topped_out() && topping_out;
 
         if !topped_out {
             for Coords(row, col) in shadow_piece.coords() {
@@ -311,6 +311,7 @@ impl<'a> CanvasDrawer<'a> {
             .unwrap();
     }
 
+    // TODO: adjust for width
     fn center_coords_around_origin(coords: Vec<Coords>) -> Vec<Coords> {
         let min_col = coords.iter().min_by_key(|Coords(_, col)| col).unwrap().1;
         let max_col = coords.iter().max_by_key(|Coords(_, col)| col).unwrap().1;

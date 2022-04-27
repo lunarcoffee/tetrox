@@ -39,7 +39,7 @@ body {
 }
 
 .bg-gradient {
-    position: absolute;
+    position: fixed;
     top: 0;
     left: 0;
 
@@ -70,9 +70,10 @@ body {
     font-size: 2.5rem;
     font-family: "Roboto Condensed";
     text-shadow: 0 0 6px;
+    box-shadow: 0 0 6px;
 
     position: fixed;
-    top: 39.5vh;
+    top: 43.5%;
     width: auto;
 
     margin: auto;

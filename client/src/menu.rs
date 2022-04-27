@@ -9,10 +9,11 @@ use crate::{
 use sycamore::{
     component,
     generic_node::Html,
-    prelude::{use_context, ReadSignal, Scope, Signal, create_memo},
+    motion::Tweened,
+    prelude::{create_memo, use_context, ReadSignal, Scope, Signal},
     view,
     view::View,
-    Prop, motion::Tweened,
+    Prop,
 };
 use sycamore_router::{HistoryIntegration, Route, Router};
 

@@ -32,6 +32,7 @@ use web_sys::{Event, HtmlImageElement, KeyboardEvent};
 #[component]
 pub fn Board<'a, G: Html>(cx: Scope<'a>) -> View<G> {
     let config = use_context::<Signal<RefCell<Config>>>(cx);
+
     let c = config.get();
     let c = (*c.borrow()).clone();
 
@@ -231,6 +232,9 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>) -> View<G> {
         last_line_clear.set(None);
         goal.set(make_goal());
 
+        let config = config.get();
+        let c = config.borrow();
+        
         let kinds = piece_kinds.get();
         let mut new_bag = SingleBag::new((*kinds).clone());
         let field = DefaultField::new(c.field_width, c.field_height, c.field_hidden, &*kinds, &mut new_bag);

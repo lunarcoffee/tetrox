@@ -60,7 +60,7 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
         get_local_storage().set_item(CONFIG_LOCAL_STORAGE_KEY, &json).unwrap();
     });
 
-    let updater = move |msg| {
+    let update = move |msg| {
         // see comment on `field_values` above
         match msg {
             // these are the only messages that would require a canvas update
@@ -105,7 +105,7 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
     macro_rules! gen_config_signals {
         ($($field:ident; $msg:ident),+) => { $(
             let $field = create_signal(cx, config.get().borrow().$field.clone());
-            create_effect(cx, move || updater(ConfigMsg::$msg((*$field.get()).clone())));
+            create_effect(cx, move || update(ConfigMsg::$msg((*$field.get()).clone())));
 
             // react to external config updates
             let selector = util::create_config_selector(cx, config, |c| c.$field.clone());
@@ -153,6 +153,22 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
         view! { cx, RangeInput { label: "Queue length", min: 0, max: *l, step: 1, value: queue_len } }
     });
 
+    let min_field_dims = piece_type.map(cx, |p| min_field_dims(p.kinds()));
+    create_effect(cx, || {
+        field_width.set((*field_width.get()).clamp(min_field_dims.get().0, 100))
+    });
+    create_effect(cx, move || {
+        update(ConfigMsg::FieldHidden(
+            (*field_hidden.get()).clamp(min_field_dims.get().1, 100),
+        ));
+    });
+    let field_width_input = min_field_dims.map(cx, move |&(width, _)| {
+        view! { cx, RangeInput { label: "Field width", min: width, max: 100, step: 1, value: field_width } }
+    });
+    let field_height_input = min_field_dims.map(cx, move |&(_, height)| {
+        view! { cx, RangeInput { label: "Field height", min: height, max: 100, step: 1, value: field_hidden } }
+    });
+
     // ui style
     let ui_offset = create_tweened_signal(cx, 0.0, Duration::from_millis(200), easing::quart_inout);
     let config_style = create_memo(cx, || format!("margin-right: -{}rem;", ui_offset.get()));
@@ -179,8 +195,8 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
                 Padding(2)
 
                 SectionHeading("Playfield")
-                RangeInput { label: "Field width", min: 4, max: 100, step: 1, value: field_width }
-                RangeInput { label: "Field height", min: 3, max: 100, step: 1, value: field_hidden }
+                (*field_width_input.get())
+                (*field_height_input.get())
                 (*queue_len_input.get())
                 SelectInput { label: "Piece kind", items: piece_kind_items, value: piece_type }
                 SelectInput { label: "Spin detection", items: spin_type_items, value: spin_types }
@@ -232,8 +248,6 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
         }
     }
 }
-
-fn get_local_storage() -> Storage { web_sys::window().unwrap().local_storage().unwrap().unwrap() }
 
 #[derive(Prop)]
 struct RangeInputProps<'a, T: Copy + Display + FromStr + 'static> {
@@ -394,6 +408,33 @@ struct InputLabelProps<'a, T: Display + 'static> {
 #[component] // TODO: enable editing text
 fn InputLabel<'a, T: Display + 'static, G: Html>(cx: Scope<'a>, props: InputLabelProps<'a, T>) -> View<G> {
     view! { cx, p(class="menu-option-label") { (props.label) " (" (props.value.get()) "):" } }
+}
+
+fn get_local_storage() -> Storage { web_sys::window().unwrap().local_storage().unwrap().unwrap() }
+
+fn min_field_dims(pieces: Vec<PieceKind>) -> (usize, usize) {
+    // get the column and row offsets (from the center and top of the board, respectively) for each piece kind
+    let (max_cols, max_rows): (Vec<_>, Vec<_>) = pieces
+        .into_iter()
+        .map(|kind| {
+            let (row_offsets, col_offsets): (Vec<_>, Vec<_>) =
+                kind.spawn_offsets().into_iter().map(|c| (c.0, c.1)).unzip();
+
+            // maximum column offset from the center, and maximum row offset from the top of the visible board
+            let max_cols_from_origin = col_offsets.into_iter().map(|c| if c > 0 { c } else { -c + 1 }).max();
+            let max_rows_from_hidden = row_offsets
+                .into_iter()
+                .map(|r| if r > 1 { r - 1 } else { -r + 2 })
+                .max();
+
+            (max_cols_from_origin, max_rows_from_hidden)
+        })
+        .unzip();
+
+    let max_cols_from_origin = max_cols.into_iter().max().unwrap().unwrap() as usize;
+    let max_rows_from_hidden = max_rows.into_iter().max().unwrap().unwrap() as usize;
+
+    (max_cols_from_origin * 2, max_rows_from_hidden * 2)
 }
 
 #[derive(Clone)]

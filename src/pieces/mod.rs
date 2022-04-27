@@ -56,6 +56,6 @@ impl PieceKind {
     }
 
     pub fn display_name(&self) -> &str { gen_piece_kind_match!(self, display_name) }
-    
+
     pub fn asset_name(&self) -> &str { gen_piece_kind_match!(self, asset_name) }
 }
