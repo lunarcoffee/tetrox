@@ -18,16 +18,12 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 use crate::{
     board::AssetCache,
-    config::{Config, FieldValues},
+    config::{Config, FieldValues, PieceTypes},
     util,
 };
 
 pub const SQUARE_WIDTH: usize = 36; // the size of each square on the field
-
 pub const LABEL_HEIGHT: usize = 30; // height of "hold" and "next" labels
-pub const PIECE_HEIGHT: usize = SQUARE_WIDTH * 3; // height of hold/queue piece
-
-pub const SIDE_BAR_WIDTH: usize = SQUARE_WIDTH * 5; // width of hold/queue panels
 pub const SIDE_BAR_PADDING: usize = SQUARE_WIDTH / 6; // bottom padding of hold/queue panels
 
 #[component]
@@ -37,8 +33,8 @@ pub fn HoldPiece<'a, G: Html>(cx: Scope<'a>) -> View<G> {
         canvas(
             ref=hold_piece_ref,
             class="hold-piece-canvas",
-            width=SIDE_BAR_WIDTH,
-            height=(LABEL_HEIGHT + PIECE_HEIGHT + SIDE_BAR_PADDING),
+            width=padded_piece_width(cx),
+            height=(LABEL_HEIGHT + padded_piece_height(cx) + SIDE_BAR_PADDING),
         )
     };
 
@@ -46,10 +42,13 @@ pub fn HoldPiece<'a, G: Html>(cx: Scope<'a>) -> View<G> {
     let asset_cache = use_context::<AssetCache>(cx);
 
     let config = use_context::<Signal<RefCell<Config>>>(cx);
+    let piece_type = util::create_config_selector(cx, config, |c| c.piece_type);
     let skin_name = util::create_config_selector(cx, config, |c| c.skin_name.clone());
 
-    create_effect(cx, || {
-        get_canvas_drawer(hold_piece_ref, &field.get().borrow(), asset_cache, skin_name).map(|c| c.draw_hold_piece());
+    create_effect(cx, move || {
+        // make sure the canvas updates every time the piece type does (which causes the canvas size to update)
+        piece_type.track(); 
+        get_canvas_drawer(hold_piece_ref, &field.get().borrow(), asset_cache, skin_name).map(|c| c.draw_hold_piece(cx));
     });
 
     view
@@ -104,8 +103,8 @@ pub fn NextQueue<'a, R: Randomizer, G: Html>(cx: Scope<'a>, props: NextQueueProp
         canvas(
             ref=next_queue_ref,
             class="next-queue-canvas",
-            width=SIDE_BAR_WIDTH,
-            height=(LABEL_HEIGHT + PIECE_HEIGHT * *queue_len.get() + SIDE_BAR_PADDING),
+            width=padded_piece_width(cx),
+            height=(LABEL_HEIGHT + padded_piece_height(cx) * *queue_len.get() + SIDE_BAR_PADDING),
         )
     };
 
@@ -116,20 +115,40 @@ pub fn NextQueue<'a, R: Randomizer, G: Html>(cx: Scope<'a>, props: NextQueueProp
     let queue_len = util::create_config_selector(cx, config, |c| c.queue_len);
     let skin_name = util::create_config_selector(cx, config, |c| c.skin_name.clone());
 
-    create_effect(cx, || {
+    create_effect(cx, move || {
         get_canvas_drawer(next_queue_ref, &field.get().borrow(), asset_cache, skin_name)
-            .map(|c| c.draw_next_queue(props.bag, *queue_len.get()));
+            .map(|c| c.draw_next_queue(cx, props.bag, *queue_len.get()));
     });
 
     view
 }
 
-fn get_canvas_drawer<'a, G: Html>(
+fn padded_piece_width(cx: Scope<'_>) -> usize { padded_piece_dims(cx).1 }
+
+fn padded_piece_height(cx: Scope<'_>) -> usize { padded_piece_dims(cx).0 }
+
+fn padded_piece_dims(cx: Scope<'_>) -> (usize, usize) {
+    let field_vals = use_context::<ReadSignal<FieldValues>>(cx);
+    let piece_type = create_selector(cx, || field_vals.get().piece_type);
+    let dims = max_piece_kind_dims(*piece_type.get());
+    ((dims.0 + 1) * SQUARE_WIDTH, (dims.1 + 1) * SQUARE_WIDTH)
+}
+
+// bounding dimensions (rows and columns, in order) for the given piece kind
+fn max_piece_kind_dims(kind: PieceTypes) -> (usize, usize) {
+    match kind {
+        PieceTypes::TetrominoSrs | PieceTypes::TetrominoAsc | PieceTypes::Mino1234 => (2, 4),
+        PieceTypes::Mino123 => (2, 3),
+        PieceTypes::Pentomino => (3, 5),
+    }
+}
+
+fn get_canvas_drawer<'a, 'b, G: Html>(
     canvas_ref: &NodeRef<G>,
-    field: &'a DefaultField,
+    field: &'b DefaultField,
     asset_cache: &'a AssetCache,
     skin_name: &'a ReadSignal<String>,
-) -> Option<CanvasDrawer<'a>> {
+) -> Option<CanvasDrawer<'a, 'b>> {
     // get a `CanvasDrawer` for the given `canvas_ref`
     canvas_ref.try_get::<DomNode>().map(|node| {
         let canvas = node.unchecked_into::<HtmlCanvasElement>();
@@ -139,17 +158,17 @@ fn get_canvas_drawer<'a, G: Html>(
     })
 }
 
-pub struct CanvasDrawer<'a> {
+pub struct CanvasDrawer<'a, 'b> {
     asset_cache: &'a AssetCache,
-    field: &'a DefaultField,
+    field: &'b DefaultField,
     context: CanvasRenderingContext2d,
     skin_name: Rc<String>,
 }
 
-impl<'a> CanvasDrawer<'a> {
+impl<'a, 'b> CanvasDrawer<'a, 'b> {
     pub fn new(
         asset_cache: &'a AssetCache,
-        field: &'a DefaultField,
+        field: &'b DefaultField,
         context: CanvasRenderingContext2d,
         skin_name: Rc<String>,
     ) -> Self {
@@ -161,17 +180,18 @@ impl<'a> CanvasDrawer<'a> {
         }
     }
 
-    fn draw_hold_piece(&self) {
-        let hp_h_px = (LABEL_HEIGHT + PIECE_HEIGHT + SIDE_BAR_PADDING) as f64;
+    fn draw_hold_piece(&self, cx: Scope<'a>) {
+        let (piece_height, piece_width) = padded_piece_dims(cx);
+        let hp_h_px = (LABEL_HEIGHT + piece_height + SIDE_BAR_PADDING) as f64;
 
         let ctx = &self.context;
         ctx.set_fill_style(&"black".into());
-        ctx.clear_rect(0.0, 0.0, SIDE_BAR_WIDTH as f64, hp_h_px);
+        ctx.clear_rect(0.0, 0.0, piece_width as f64, hp_h_px);
 
         // fill background
         ctx.set_stroke_style(&"black".into());
         ctx.set_global_alpha(0.6);
-        ctx.fill_rect(0.0, 0.0, SIDE_BAR_WIDTH as f64, hp_h_px);
+        ctx.fill_rect(0.0, 0.0, piece_width as f64, hp_h_px);
 
         // draw label
         ctx.set_fill_style(&"#ccc".into());
@@ -182,7 +202,7 @@ impl<'a> CanvasDrawer<'a> {
         // dim the held piece if it cannot be swapped out again
         ctx.set_global_alpha(if self.field.hold_swapped() { 0.3 } else { 1.0 });
         if let Some(kind) = self.field.hold_piece() {
-            self.draw_piece(kind, SIDE_BAR_WIDTH / 2, LABEL_HEIGHT + PIECE_HEIGHT / 2)
+            self.draw_piece(kind, piece_width / 2, LABEL_HEIGHT + piece_height / 2)
         }
     }
 
@@ -248,18 +268,19 @@ impl<'a> CanvasDrawer<'a> {
         }
     }
 
-    fn draw_next_queue(&self, bag: &Signal<RefCell<impl Randomizer>>, queue_len: usize) {
+    fn draw_next_queue(&self, cx: Scope<'a>, bag: &Signal<RefCell<impl Randomizer>>, queue_len: usize) {
         // total height of queue in pixels
-        let nq_h_px = (LABEL_HEIGHT + PIECE_HEIGHT * queue_len + SIDE_BAR_PADDING) as f64;
+        let (piece_height, piece_width) = padded_piece_dims(cx);
+        let nq_h_px = (LABEL_HEIGHT + piece_height * queue_len + SIDE_BAR_PADDING) as f64;
 
         let ctx = &self.context;
         ctx.set_fill_style(&"black".into());
-        ctx.clear_rect(0.0, 0.0, SIDE_BAR_WIDTH as f64, nq_h_px);
+        ctx.clear_rect(0.0, 0.0, piece_width as f64, nq_h_px);
 
         // fill background
         ctx.set_stroke_style(&"black".into());
         ctx.set_global_alpha(0.6);
-        ctx.fill_rect(0.0, 0.0, SIDE_BAR_WIDTH as f64, nq_h_px);
+        ctx.fill_rect(0.0, 0.0, piece_width as f64, nq_h_px);
 
         // draw label
         ctx.set_fill_style(&"#ccc".into());
@@ -271,8 +292,8 @@ impl<'a> CanvasDrawer<'a> {
             for (nth, kind) in bag.peek().take(queue_len).enumerate() {
                 self.draw_piece(
                     kind,
-                    SIDE_BAR_WIDTH / 2,
-                    LABEL_HEIGHT + PIECE_HEIGHT * (nth + 1) - PIECE_HEIGHT / 2,
+                    piece_width / 2,
+                    LABEL_HEIGHT + piece_height * (nth + 1) - piece_height / 2,
                 )
             }
         });
@@ -311,7 +332,6 @@ impl<'a> CanvasDrawer<'a> {
             .unwrap();
     }
 
-    // TODO: adjust for width
     fn center_coords_around_origin(coords: Vec<Coords>) -> Vec<Coords> {
         let min_col = coords.iter().min_by_key(|Coords(_, col)| col).unwrap().1;
         let max_col = coords.iter().max_by_key(|Coords(_, col)| col).unwrap().1;

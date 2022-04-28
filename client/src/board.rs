@@ -97,7 +97,7 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>) -> View<G> {
                     |field: &mut DefaultField| drop(field.try_shift($rows, $cols))
                 }
             })
-        };
+        }
     }
     let left_action = loop_timer_shift_action!(0, -1, arr);
     let right_action = loop_timer_shift_action!(0, 1, arr);
@@ -234,7 +234,7 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>) -> View<G> {
 
         let config = config.get();
         let c = config.borrow();
-        
+
         let kinds = piece_kinds.get();
         let mut new_bag = SingleBag::new((*kinds).clone());
         let field = DefaultField::new(c.field_width, c.field_height, c.field_hidden, &*kinds, &mut new_bag);

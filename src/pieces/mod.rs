@@ -3,13 +3,14 @@ use crate::{kicks::RotationState, Coords, CoordsFloat};
 use self::{
     mino123::Mino123,
     mino1234::Mino1234,
-    tetromino::{TetrominoAsc, TetrominoSrs}, pentomino::Pentomino,
+    pentomino::Pentomino,
+    tetromino::{TetrominoAsc, TetrominoSrs},
 };
 
 pub mod mino123;
 pub mod mino1234;
-pub mod tetromino;
 pub mod pentomino;
+pub mod tetromino;
 
 pub trait PieceKindTrait {
     // coords of the squares composing the piece relative to the spawn coords
@@ -42,13 +43,28 @@ pub enum PieceKind {
 
 // generate match statement over all `PieceKind`s that calls a method, optionally with arguments
 macro_rules! gen_piece_kind_match {
-    ($self:ident, $method:ident $(,)? $($arg:expr),*) => { match $self {
-        PieceKind::TetrominoSrs(p) => p.$method($($arg,)*),
-        PieceKind::TetrominoAsc(p) => p.$method($($arg,)*),
-        PieceKind::Mino123(p) => p.$method($($arg,)*),
-        PieceKind::Mino1234(p) => p.$method($($arg,)*),
-        PieceKind::Pentomino(p) => p.$method($($arg,)*),
-    } }
+    ($self:ident, $method:ident $(,)? $($arg:expr),*) => {
+        match $self {
+            PieceKind::TetrominoSrs(p) => p.$method($($arg,)*),
+            PieceKind::TetrominoAsc(p) => p.$method($($arg,)*),
+            PieceKind::Mino123(p) => p.$method($($arg,)*),
+            PieceKind::Mino1234(p) => p.$method($($arg,)*),
+            PieceKind::Pentomino(p) => p.$method($($arg,)*),
+        }
+    }
+}
+
+// same as above but for associated functions
+macro_rules! gen_piece_kind_match_associated {
+    ($self:ident, $method:ident) => {
+        match $self {
+            PieceKind::TetrominoSrs(_) => TetrominoSrs::$method(),
+            PieceKind::TetrominoAsc(_) => TetrominoAsc::$method(),
+            PieceKind::Mino123(_) => Mino123::$method(),
+            PieceKind::Mino1234(_) => Mino1234::$method(),
+            PieceKind::Pentomino(_) => Pentomino::$method(),
+        }
+    }
 }
 
 impl PieceKind {
@@ -61,4 +77,6 @@ impl PieceKind {
     pub fn display_name(&self) -> &str { gen_piece_kind_match!(self, display_name) }
 
     pub fn asset_name(&self) -> &str { gen_piece_kind_match!(self, asset_name) }
+
+    pub fn iter(&self) -> Box<dyn Iterator<Item = PieceKind>> { gen_piece_kind_match_associated!(self, iter) }
 }

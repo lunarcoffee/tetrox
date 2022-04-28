@@ -47,7 +47,7 @@ pub fn Stats<'a, G: Html>(cx: Scope<'a>, props: StatsProps<'a, G>) -> View<G> {
                         .spin()
                         .map(|s| format!("{}-spin ", s.display_name()))
                         .unwrap_or("".to_string());
-                    let n_text = ["", "single", "double", "triple", "quad"][l.n_lines()];
+                    let n_text = ["", "single", "double", "triple", "quad", "penta"][l.n_lines()];
 
                     format!("{}{}{}", mini, spin, n_text).trim().to_string()
                 })

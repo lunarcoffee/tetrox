@@ -48,7 +48,7 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
     // separate signal for values required by canvas drawing because if both the canvas and the drawer directly used
     // the config, sometimes the view's tracked signals would update after the canvas drawer effect's, leading the
     // drawer to use an invalid `NodeRef`
-    let field_values = FieldValues::new(c.field_width, c.field_height, c.field_hidden, c.queue_len);
+    let field_values = FieldValues::new(c.field_width, c.field_height, c.field_hidden, c.queue_len, c.piece_type);
     let field_values = create_signal(cx, field_values);
     provide_context_ref(cx, field_values.map(cx, |d| d.clone()));
 
@@ -71,6 +71,7 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
                 field_values.modify().hidden = hidden;
             }
             ConfigMsg::QueueLen(queue_len) => field_values.modify().queue_len = queue_len,
+            ConfigMsg::PieceType(piece_type) => field_values.modify().piece_type = piece_type,
             _ => {}
         }
 
@@ -83,10 +84,12 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
 
             // match statement for updating each config value given its message
             macro_rules! gen_config_setter_match {
-                ($($fields:ident; $msgs:ident),+) => { match msg {
-                    $(ConfigMsg::$msgs(ref new_value) => config.$fields = new_value.clone(),)*
-                    _ => {}
-                } }
+                ($($fields:ident; $msgs:ident),+) => {
+                    match msg {
+                        $(ConfigMsg::$msgs(ref new_value) => config.$fields = new_value.clone(),)*
+                        _ => {}
+                    }
+                }
             }
             gen_config_setter_match! {
                 gravity_delay; GravityDelay, lock_delay; LockDelay, move_limit; MoveLimit,
@@ -104,14 +107,16 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
 
     // make config value signals and effects which update the config when the value signal is changed
     macro_rules! gen_config_signals {
-        ($($field:ident; $msg:ident),+) => { $(
-            let $field = create_signal(cx, config.get().borrow().$field.clone());
-            create_effect(cx, move || update(ConfigMsg::$msg((*$field.get()).clone())));
+        ($($field:ident; $msg:ident),+) => {
+            $(
+                let $field = create_signal(cx, config.get().borrow().$field.clone());
+                create_effect(cx, move || update(ConfigMsg::$msg((*$field.get()).clone())));
 
-            // react to external config updates
-            let selector = util::create_config_selector(cx, config, |c| c.$field.clone());
-            create_effect(cx, || $field.set((*selector.get()).clone()));
-        )* }
+                // react to external config updates
+                let selector = util::create_config_selector(cx, config, |c| c.$field.clone());
+                create_effect(cx, || $field.set((*selector.get()).clone()));
+            )*
+        }
     }
     gen_config_signals! {
         gravity_delay; GravityDelay, lock_delay; LockDelay, move_limit; MoveLimit,
@@ -148,11 +153,13 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
         .collect();
 
     macro_rules! keybind_capture_buttons {
-        ($($label:expr; $input:ident),*) => { view! { cx,
-            div(class="menu-button-box") {
-                $(InputCaptureButton { label: $label, input: Input::$input, keybinds })*
+        ($($label:expr; $input:ident),*) => {
+            view! { cx,
+                div(class="menu-button-box") {
+                    $(InputCaptureButton { label: $label, input: Input::$input, keybinds })*
+                }
             }
-        } }
+        }
     }
 
     let max_queue_len = piece_type.map(cx, |p| p.kinds().len());
@@ -451,15 +458,17 @@ pub struct FieldValues {
     pub height: usize,
     pub hidden: usize,
     pub queue_len: usize,
+    pub piece_type: PieceTypes,
 }
 
 impl FieldValues {
-    pub fn new(width: usize, height: usize, hidden: usize, queue_len: usize) -> Self {
+    pub fn new(width: usize, height: usize, hidden: usize, queue_len: usize, piece_type: PieceTypes) -> Self {
         FieldValues {
             width,
             height,
             hidden,
             queue_len,
+            piece_type,
         }
     }
 }
