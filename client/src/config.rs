@@ -71,7 +71,10 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
                 field_values.modify().hidden = hidden;
             }
             ConfigMsg::QueueLen(queue_len) => field_values.modify().queue_len = queue_len,
-            ConfigMsg::PieceType(piece_type) => field_values.modify().piece_type = piece_type,
+            ConfigMsg::PieceType(piece_type) => {
+                web_sys::console::log_1(&"piece type set".into());
+                field_values.modify().piece_type = piece_type;
+            },
             _ => {}
         }
 

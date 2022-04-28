@@ -106,7 +106,7 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>) -> View<G> {
     // timer loop executing an action on an interval
     let loop_timer = |delay: &'a ReadSignal<u32>, input, action: &'a ReadSignal<fn(&mut DefaultField)>| {
         // derive timer from looping interval
-        let timer = delay.map(cx, move |d| Timer::new(cx, *d));
+        let timer = delay.map(cx, move |d| Timer::new(cx, *d.max(&16)));
 
         timer::create_timer_finish_effect(cx, timer, move || {
             let state = inputs.get_untracked().borrow().get_state(&input);
@@ -140,7 +140,8 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>) -> View<G> {
     // looping input timers
     let left_timer = buffered_loop_timer(das_arr, Input::Left, left_action);
     let right_timer = buffered_loop_timer(das_arr, Input::Right, right_action);
-    let soft_drop_timer = loop_timer(sdr, Input::SoftDrop, soft_drop_action);
+    let buffered_sdr = sdr.map(cx, |s| (0, *s));
+    let soft_drop_timer = buffered_loop_timer(buffered_sdr, Input::SoftDrop, soft_drop_action);
 
     let last_line_clear = create_signal(cx, None::<LineClear>);
     let topped_out = create_selector(cx, || field_signal.get().borrow().topped_out());

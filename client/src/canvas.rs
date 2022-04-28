@@ -33,7 +33,9 @@ pub fn HoldPiece<'a, G: Html>(cx: Scope<'a>) -> View<G> {
         canvas(
             ref=hold_piece_ref,
             class="hold-piece-canvas",
-            width=padded_piece_width(cx),
+            width={
+                web_sys::console::log_1(&"hold canvas updated".into());
+                padded_piece_width(cx)},
             height=(LABEL_HEIGHT + padded_piece_height(cx) + SIDE_BAR_PADDING),
         )
     };
@@ -46,9 +48,12 @@ pub fn HoldPiece<'a, G: Html>(cx: Scope<'a>) -> View<G> {
     let skin_name = util::create_config_selector(cx, config, |c| c.skin_name.clone());
 
     create_effect(cx, move || {
+        web_sys::console::log_1(&"hold canvas drawn".into());
+
         // make sure the canvas updates every time the piece type does (which causes the canvas size to update)
         piece_type.track();
-        get_canvas_drawer(hold_piece_ref, &field.get().borrow(), asset_cache, skin_name).map(|c| c.draw_hold_piece(cx));
+        get_canvas_drawer(hold_piece_ref, &field.get().borrow(), asset_cache, skin_name)
+            .map(|c| c.draw_hold_piece(cx));
     });
 
     view
@@ -116,7 +121,7 @@ pub fn NextQueue<'a, R: Randomizer, G: Html>(cx: Scope<'a>, props: NextQueueProp
     let skin_name = util::create_config_selector(cx, config, |c| c.skin_name.clone());
 
     create_effect(cx, move || {
-        get_canvas_drawer(next_queue_ref, &field.get().borrow(), asset_cache, skin_name)
+        get_canvas_drawer(next_queue_ref, &field.get_untracked().borrow(), asset_cache, skin_name)
             .map(|c| c.draw_next_queue(cx, props.bag, *queue_len.get()));
     });
 
