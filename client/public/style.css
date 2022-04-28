@@ -242,13 +242,14 @@ body {
 }
 
 .field-panel {
+    margin-right: 30px;
+
     display: flex;
     flex-direction: column;
+    align-items: flex-end;
 }
 
 .hold-piece-canvas {
-    margin-right: 30px;
-
     border: 4px solid #bbbbbb88;
     border-radius: 4px;
 
@@ -256,8 +257,10 @@ body {
 }
 
 .game-stats {
-    text-align: right;
     width: 170px;
+    margin-right: 12px;
+
+    text-align: right;
     overflow: visible;
     white-space: nowrap;
 }
