@@ -97,7 +97,7 @@ pub fn Board<'a, G: Html>(cx: Scope<'a>) -> View<G> {
                     |field: &mut DefaultField| drop(field.try_shift($rows, $cols))
                 }
             })
-        }
+        };
     }
     let left_action = loop_timer_shift_action!(0, -1, arr);
     let right_action = loop_timer_shift_action!(0, 1, arr);

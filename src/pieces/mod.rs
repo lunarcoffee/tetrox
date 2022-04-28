@@ -64,7 +64,7 @@ macro_rules! gen_piece_kind_match_associated {
             PieceKind::Mino1234(_) => Mino1234::$method(),
             PieceKind::Pentomino(_) => Pentomino::$method(),
         }
-    }
+    };
 }
 
 impl PieceKind {
@@ -79,4 +79,14 @@ impl PieceKind {
     pub fn asset_name(&self) -> &str { gen_piece_kind_match!(self, asset_name) }
 
     pub fn iter(&self) -> Box<dyn Iterator<Item = PieceKind>> { gen_piece_kind_match_associated!(self, iter) }
+}
+
+// calculate the correct pivot offset based on the current rotation state and an initial offset
+fn make_pivot_offset(rotation_state: RotationState, rows: f64, cols: f64) -> CoordsFloat {
+    match rotation_state {
+        RotationState::Initial => CoordsFloat(rows, cols),
+        RotationState::Cw => CoordsFloat(rows, -cols),
+        RotationState::Flipped => CoordsFloat(-rows, -cols),
+        RotationState::Ccw => CoordsFloat(-rows, cols),
+    }
 }

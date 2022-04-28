@@ -25,6 +25,7 @@ impl RotationState {
 // cw/ccw kick table
 pub trait KickTable {
     fn rotate_cw(&self, piece: PieceKind, rotation_state: RotationState) -> Vec<Coords>;
+
     fn rotate_ccw(&self, piece: PieceKind, rotation_state: RotationState) -> Vec<Coords>;
 }
 
@@ -57,13 +58,14 @@ pub struct SrsKickTable;
 impl KickTable for SrsKickTable {
     fn rotate_cw(&self, piece: PieceKind, rotation_state: RotationState) -> Vec<Coords> {
         match piece {
-            PieceKind::TetrominoSrs(kind) if kind != TetrominoSrs::O => match kind {
+            PieceKind::TetrominoSrs(kind) => match kind {
                 TetrominoSrs::I => match rotation_state {
                     RotationState::Initial => vec![(0, 0), (0, -2), (0, 1), (1, -2), (-2, 1)],
                     RotationState::Cw => vec![(0, 0), (0, -1), (0, 2), (-2, -1), (1, 2)],
                     RotationState::Flipped => vec![(0, 0), (0, 2), (0, -1), (-1, 2), (2, -1)],
                     RotationState::Ccw => vec![(0, 0), (0, 1), (0, -2), (2, 1), (-1, -2)],
                 },
+                TetrominoSrs::O => vec![], // don't let o rotate at all
                 _ => match rotation_state {
                     RotationState::Initial => vec![(0, 0), (0, -1), (-1, -1), (2, 0), (2, -1)],
                     RotationState::Cw => vec![(0, 0), (0, 1), (1, 1), (-2, 0), (-2, 1)],

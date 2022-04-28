@@ -47,7 +47,7 @@ pub fn HoldPiece<'a, G: Html>(cx: Scope<'a>) -> View<G> {
 
     create_effect(cx, move || {
         // make sure the canvas updates every time the piece type does (which causes the canvas size to update)
-        piece_type.track(); 
+        piece_type.track();
         get_canvas_drawer(hold_piece_ref, &field.get().borrow(), asset_cache, skin_name).map(|c| c.draw_hold_piece(cx));
     });
 

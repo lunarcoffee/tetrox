@@ -29,19 +29,11 @@ impl PieceKindTrait for Mino123 {
     fn pivot_offset(&self, rotation_state: RotationState) -> (usize, CoordsFloat) {
         match self {
             Mino123::Monomino => (0, CoordsFloat::zero()),
-            Mino123::Domino => (
-                0,
-                match rotation_state {
-                    RotationState::Initial => CoordsFloat(0.5, 0.5),
-                    RotationState::Cw => CoordsFloat(0.5, -0.5),
-                    RotationState::Flipped => CoordsFloat(-0.5, -0.5),
-                    RotationState::Ccw => CoordsFloat(-0.5, 0.5),
-                },
-            ),
+            Mino123::Domino => (0, super::make_pivot_offset(rotation_state, 0.5, 0.5)),
             _ => (1, CoordsFloat::zero()),
         }
     }
-    
+
     fn display_name(&self) -> &str {
         match self {
             Mino123::Monomino => "o1",

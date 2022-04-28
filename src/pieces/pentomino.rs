@@ -54,34 +54,22 @@ impl PieceKindTrait for Pentomino {
         .collect()
     }
 
+    // these should feel fairly natural
     fn pivot_offset(&self, rotation_state: RotationState) -> (usize, CoordsFloat) {
         match self {
-            Pentomino::N => (0, CoordsFloat::zero()),
-            Pentomino::J
-            | Pentomino::Q
-            | Pentomino::P
-            | Pentomino::NPrime
-            | Pentomino::T
-            | Pentomino::U
-            | Pentomino::YPrime => (1, CoordsFloat::zero()),
             Pentomino::I
             | Pentomino::F
             | Pentomino::FPrime
-            | Pentomino::L
             | Pentomino::W
             | Pentomino::X
-            | Pentomino::Y
             | Pentomino::S
             | Pentomino::Z => (2, CoordsFloat::zero()),
-            Pentomino::V => (
-                2,
-                match rotation_state {
-                    RotationState::Initial => CoordsFloat(-1.0, -1.0),
-                    RotationState::Cw => CoordsFloat(-1.0, 1.0),
-                    RotationState::Flipped => CoordsFloat(1.0, 1.0),
-                    RotationState::Ccw => CoordsFloat(1.0, -1.0),
-                },
-            ),
+            Pentomino::J | Pentomino::L | Pentomino::Q | Pentomino::NPrime | Pentomino::Y | Pentomino::YPrime => {
+                (2, super::make_pivot_offset(rotation_state, -0.5, -0.5))
+            }
+            Pentomino::P | Pentomino::N => (1, super::make_pivot_offset(rotation_state, -0.5, -0.5)),
+            Pentomino::T | Pentomino::U => (1, CoordsFloat::zero()),
+            Pentomino::V => (2, super::make_pivot_offset(rotation_state, -1.0, -1.0)),
         }
     }
 

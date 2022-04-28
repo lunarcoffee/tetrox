@@ -152,6 +152,7 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
         .zip(crate::SKIN_NAMES.iter().map(|s| s.to_string()))
         .collect();
 
+    // generate buttons for showing/getting keybinds
     macro_rules! keybind_capture_buttons {
         ($($label:expr; $input:ident),*) => {
             view! { cx,
@@ -162,20 +163,21 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
         }
     }
 
+    // make maximum queue length dynamic on piece kind and clamp it when it changes
     let max_queue_len = piece_type.map(cx, |p| p.kinds().len());
-    create_effect(cx, || queue_len.set((*queue_len.get()).clamp(0, *max_queue_len.get()))); // TODO: clamp effect factory?
+    create_effect(cx, || queue_len.set((*queue_len.get()).clamp(0, *max_queue_len.get())));
     let queue_len_input = max_queue_len.map(cx, move |l| {
         view! { cx, RangeInput { label: "Queue length", min: 0, max: *l, step: 1, value: queue_len } }
     });
 
+    // make minimum field width and height dynamic on piece kind (as above)
     let min_field_dims = piece_type.map(cx, |p| min_field_dims(p.kinds()));
     create_effect(cx, || {
         field_width.set((*field_width.get()).clamp(min_field_dims.get().0, 100))
     });
     create_effect(cx, move || {
-        update(ConfigMsg::FieldHidden(
-            (*field_hidden.get()).clamp(min_field_dims.get().1, 100),
-        ));
+        let clamped = (*field_hidden.get()).clamp(min_field_dims.get().1, 100);
+        update(ConfigMsg::FieldHidden(clamped));
     });
     let field_width_input = min_field_dims.map(cx, move |&(width, _)| {
         view! { cx, RangeInput { label: "Field width", min: width, max: 100, step: 1, value: field_width } }
@@ -188,6 +190,7 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
     let ui_offset = create_tweened_signal(cx, 0.0, Duration::from_millis(200), easing::quart_inout);
     let config_style = create_memo(cx, || format!("margin-right: -{}rem;", ui_offset.get()));
 
+    // ui show/hide effect
     let ui_enabled = create_signal(cx, UiEnabled(true));
     provide_context_ref(cx, ui_enabled);
     create_effect(cx, || ui_offset.set(if **ui_enabled.get() { 0.0 } else { 20.0 }));

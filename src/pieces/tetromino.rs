@@ -1,7 +1,7 @@
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
-use crate::{Coords, CoordsFloat, PieceKind, kicks::RotationState};
+use crate::{kicks::RotationState, Coords, CoordsFloat, PieceKind};
 
 use super::PieceKindTrait;
 
@@ -34,21 +34,10 @@ impl PieceKindTrait for TetrominoSrs {
 
     fn pivot_offset(&self, rotation_state: RotationState) -> (usize, CoordsFloat) {
         match self {
-            TetrominoSrs::S => (1, CoordsFloat::zero()),
+            TetrominoSrs::S | TetrominoSrs::L | TetrominoSrs::J | TetrominoSrs::T => (1, CoordsFloat::zero()),
             TetrominoSrs::Z => (0, CoordsFloat::zero()),
-            TetrominoSrs::L => (1, CoordsFloat::zero()),
-            TetrominoSrs::J => (1, CoordsFloat::zero()),
-            TetrominoSrs::T => (1, CoordsFloat::zero()),
-            TetrominoSrs::O => (2, TetrominoSrs::I.pivot_offset(rotation_state).1),
-            TetrominoSrs::I => (
-                1,
-                match rotation_state {
-                    RotationState::Initial => CoordsFloat(0.5, 0.5),
-                    RotationState::Cw => CoordsFloat(0.5, -0.5),
-                    RotationState::Flipped => CoordsFloat(-0.5, -0.5),
-                    RotationState::Ccw => CoordsFloat(-0.5, 0.5),
-                },
-            ),
+            TetrominoSrs::O => (2, super::make_pivot_offset(rotation_state, 0.5, 0.5)),
+            TetrominoSrs::I => (1, super::make_pivot_offset(rotation_state, 0.5, 0.5)),
         }
     }
 
@@ -64,9 +53,7 @@ impl PieceKindTrait for TetrominoSrs {
         }
     }
 
-    fn asset_name(&self) -> &str {
-        self.display_name()
-    }
+    fn asset_name(&self) -> &str { self.display_name() }
 
     fn iter() -> Box<dyn Iterator<Item = PieceKind>> {
         Box::new(<Self as IntoEnumIterator>::iter().map(|p| PieceKind::TetrominoSrs(p)))
@@ -123,9 +110,7 @@ impl PieceKindTrait for TetrominoAsc {
         }
     }
 
-    fn asset_name(&self) -> &str {
-        self.display_name()
-    }
+    fn asset_name(&self) -> &str { self.display_name() }
 
     fn iter() -> Box<dyn Iterator<Item = PieceKind>> {
         Box::new(<Self as IntoEnumIterator>::iter().map(|p| PieceKind::TetrominoAsc(p)))
