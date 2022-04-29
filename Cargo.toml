@@ -9,7 +9,6 @@ num-traits = "0.2"
 num-derive = "0.2"
 strum = "0.24"
 strum_macros = "0.24"
-# web-sys = { version = "0.3.56", features = [ "console" ] }
 
 [workspace]
-members = ["client", "server"]
+members = ["client"]
