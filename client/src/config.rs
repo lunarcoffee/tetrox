@@ -50,7 +50,7 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
     // drawer to use an invalid `NodeRef`
     let field_values = FieldValues::new(c.field_width, c.field_height, c.field_hidden, c.queue_len, c.piece_type);
     let field_values = create_signal(cx, field_values);
-    provide_context_ref(cx, field_values.map(cx, |d| d.clone()));
+    provide_context_ref(cx, field_values.map(cx, |v| v.clone()));
 
     let config = create_signal(cx, RefCell::new(c));
     provide_context_ref(cx, config);
@@ -71,10 +71,7 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
                 field_values.modify().hidden = hidden;
             }
             ConfigMsg::QueueLen(queue_len) => field_values.modify().queue_len = queue_len,
-            ConfigMsg::PieceType(piece_type) => {
-                web_sys::console::log_1(&"piece type set".into());
-                field_values.modify().piece_type = piece_type;
-            },
+            ConfigMsg::PieceType(piece_type) => field_values.modify().piece_type = piece_type,
             _ => {}
         }
 
@@ -168,18 +165,22 @@ pub fn ConfigPanel<'a, G: Html>(cx: Scope<'a>) -> View<G> {
 
     // make maximum queue length dynamic on piece kind and clamp it when it changes
     let max_queue_len = piece_type.map(cx, |p| p.kinds().len());
-    create_effect(cx, || queue_len.set((*queue_len.get()).clamp(0, *max_queue_len.get())));
+    create_effect(cx, move || {
+        let clamped = (*queue_len.get_untracked()).clamp(0, *max_queue_len.get());
+        update(ConfigMsg::QueueLen(clamped));
+    });
     let queue_len_input = max_queue_len.map(cx, move |l| {
         view! { cx, RangeInput { label: "Queue length", min: 0, max: *l, step: 1, value: queue_len } }
     });
 
     // make minimum field width and height dynamic on piece kind (as above)
     let min_field_dims = piece_type.map(cx, |p| min_field_dims(p.kinds()));
-    create_effect(cx, || {
-        field_width.set((*field_width.get()).clamp(min_field_dims.get().0, 100))
+    create_effect(cx, move || {
+        let clamped = (*field_width.get_untracked()).clamp(min_field_dims.get().0, 100);
+        update(ConfigMsg::FieldWidth(clamped));
     });
     create_effect(cx, move || {
-        let clamped = (*field_hidden.get()).clamp(min_field_dims.get().1, 100);
+        let clamped = (*field_hidden.get_untracked()).clamp(min_field_dims.get().1, 100);
         update(ConfigMsg::FieldHidden(clamped));
     });
     let field_width_input = min_field_dims.map(cx, move |&(width, _)| {
@@ -330,8 +331,12 @@ where
             label(class="menu-option-label") { (label) ":" }
             select(
                 on:input=|e: Event| {
+                    web_sys::console::log_1(&format!("---------------------------------------------- select event {}", js_sys::Date::now()).into());
+
                     let new_label = e.target().unwrap().dyn_into::<HtmlSelectElement>().unwrap().value();
                     value.set(items.get().iter().find(|i| i.0 == &new_label).unwrap().1.clone());
+
+                    web_sys::console::log_1(&format!("config value set {}", js_sys::Date::now()).into());
                 },
             ) {
                 Keyed {
@@ -682,6 +687,7 @@ impl Default for Config {
     }
 }
 
+#[derive(Debug)]
 enum ConfigMsg {
     GravityDelay(u32),
     LockDelay(u32),

@@ -99,10 +99,10 @@ impl PieceKindTrait for Pentomino {
     fn asset_name(&self) -> &str {
         match self {
             Pentomino::I | Pentomino::U => "i",
-            Pentomino::F | Pentomino::J | Pentomino::N | Pentomino::V | Pentomino::YPrime => "j",
-            Pentomino::FPrime | Pentomino::L | Pentomino::NPrime | Pentomino::Y => "l",
-            Pentomino::Q | Pentomino::S => "s",
-            Pentomino::P | Pentomino::Z => "z",
+            Pentomino::F | Pentomino::Q | Pentomino::S => "s",
+            Pentomino::FPrime | Pentomino::P | Pentomino::Z => "z",
+            Pentomino::J | Pentomino::N | Pentomino::V | Pentomino::YPrime => "j",
+            Pentomino::L | Pentomino::NPrime | Pentomino::Y => "l",
             Pentomino::T | Pentomino::W => "t",
             Pentomino::X => "o",
         }

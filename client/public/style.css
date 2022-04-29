@@ -257,7 +257,7 @@ body {
 }
 
 .game-stats {
-    width: 170px;
+    width: 0;
     margin-right: 12px;
 
     text-align: right;
@@ -272,7 +272,7 @@ body {
     font-family: "Roboto Condensed";
     font-weight: bold;
 
-    direction: ltr !important;
+    /* direction: ltr !important; */
 }
 
 .game-stats>p {
@@ -302,6 +302,7 @@ body {
     color: #ccc !important;
     font-size: 1.8rem;
     margin: -14px 0 0 0;
+    direction: rtl !important;
 }
 
 .field {
