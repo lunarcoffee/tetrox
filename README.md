@@ -1,6 +1,6 @@
 # Tetrox
 
-Modern, highly configurable block stacking puzzle game built for the web, using Rust to leverage the power of WebAssembly. A live instance is available [here](https://csclub.uwaterloo.ca/~fsygao/).
+Modern, highly configurable block stacking puzzle game built for the web, using Rust to leverage the power of WebAssembly. A live instance is available [here](https://csclub.uwaterloo.ca/~fsygao/tetrox).
 
 ![DT Cannon](https://i.imgur.com/Boxv8yv.png)
 
